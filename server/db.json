@@ -1,0 +1,55 @@
+{
+  "users": [
+    {
+      "id": "h6zl4f3",
+      "email": "harisheeswar722@gmail.com",
+      "password": "$2a$10$hnGsSp0T5g430/K7tseR1O0enmSOjimUbaLiQTYHwO830o4bLOWn2",
+      "nickname": "hari980",
+      "bio": "Hey there! I am using H70 Chat.",
+      "level": 3,
+      "xp": 75,
+      "role": "supervisor",
+      "stories": [
+        {
+          "id": "cqzt7qk",
+          "type": "text",
+          "content": "helo",
+          "createdAt": "2026-07-14T12:31:01.953Z"
+        }
+      ],
+      "createdAt": "2026-07-14T12:11:40.299Z",
+      "lastSeen": "2026-07-14T13:08:06.833Z",
+      "soundLevel": 100
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room_wj0ehp6",
+      "name": "tamil group",
+      "creatorId": "h6zl4f3",
+      "createdAt": "2026-07-14T12:12:05.398Z",
+      "avatar": "/uploads/media-1784032512010-531782446.png"
+    },
+    {
+      "id": "room_py0uc2e",
+      "name": "tamil group",
+      "creatorId": "h6zl4f3",
+      "createdAt": "2026-07-14T12:12:20.926Z"
+    }
+  ],
+  "messages": [
+    {
+      "id": "bgms9ao",
+      "roomId": "room_wj0ehp6",
+      "chatKey": null,
+      "senderId": "h6zl4f3",
+      "senderNickname": "hari980",
+      "senderLevel": 1,
+      "recipientId": null,
+      "type": "text",
+      "content": "hiii",
+      "createdAt": "2026-07-14T12:12:27.295Z"
+    }
+  ],
+  "resetTokens": []
+}
