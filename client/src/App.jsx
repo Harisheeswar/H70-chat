@@ -1570,7 +1570,18 @@ export default function App() {
 
               {activeTab === 'dms' && (
                 <div style={{ padding: '0.5rem 0' }}>
-                  <div className="section-title">Conversations</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.5rem 0.5rem' }}>
+                    <div className="section-title" style={{ margin: 0 }}>Conversations</div>
+                    {token && (
+                      <button
+                        onClick={() => { setCurrentNav('people'); setPeopleTab('add'); setMobileMenuOpen(false); }}
+                        style={{ background: 'var(--bg-accent)', border: 'none', color: '#fff', borderRadius: '8px', padding: '4px 10px', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                        title="Add a new friend"
+                      >
+                        <UserPlus size={12} /> Add Friend
+                      </button>
+                    )}
+                  </div>
                   {onlineUsers.filter(u => {
                     if (u.id === user?.id) return false;
                     // Show if: user has DM history OR there are unread messages from them
@@ -1888,11 +1899,14 @@ export default function App() {
                   const isOutgoing = msg.senderId === user?.id;
                   const showAvatar = i === 0 || messages[i - 1].senderId !== msg.senderId;
                   const sender = onlineUsers.find(u => u.id === msg.senderId);
-                  // Schema fallbacks: DB stores createdAt/content/type, live msgs use timestamp/text/mediaType
-                  const displayTime = msg.timestamp || msg.createdAt;
-                  const displayText = msg.text || (msg.type === 'text' ? msg.content : '') || '';
-                  const displayMediaType = msg.mediaType || (msg.type !== 'text' ? msg.type : null);
-                  const displayMediaUrl = msg.mediaUrl || (msg.type !== 'text' ? msg.content : '');
+                  // Schema fallbacks: DB uses {type, content, createdAt}, live uses {text, mediaType, mediaUrl, timestamp}
+                  const displayTime = msg.timestamp || msg.createdAt || null;
+                  // Text content: check msg.text first, then if type is text use content, else use content as fallback
+                  const displayText = msg.text || (msg.content && (msg.type === 'text' || !msg.type || !['image','audio','video'].includes(msg.type)) ? msg.content : '') || '';
+                  // Media type: check explicit mediaType, then fall back to DB type field if it's media
+                  const isMedia = (msg.type === 'image' || msg.type === 'audio' || msg.type === 'video' || msg.mediaType);
+                  const displayMediaType = msg.mediaType || (isMedia ? msg.type : null);
+                  const displayMediaUrl = msg.mediaUrl || (isMedia ? msg.content : '');
 
                   return (
                     <div key={msg.id || i} className={`message-wrapper ${isOutgoing ? 'outgoing' : ''}`}>

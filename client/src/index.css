@@ -579,7 +579,8 @@ input, button, textarea {
 }
 
 .message-wrapper.outgoing .message-bubble {
-  background: var(--bg-accent);
+  background: #dde8f8;
+  color: #1a1a2e;
   border: none;
   border-radius: 16px;
   border-top-right-radius: 4px;
@@ -1716,8 +1717,8 @@ input, button, textarea {
 }
 
 .main-content-pane .message-wrapper.outgoing .message-bubble {
-  background: #e8edf5 !important;
-  color: #1f2937 !important;
+  background: #dde8f8 !important;
+  color: #1a1a2e !important;
   border-radius: 12px;
 }
 
@@ -1953,19 +1954,20 @@ input, button, textarea {
   .mobile-menu-btn,
   .mobile-close-btn,
   .mobile-home-header,
-  .chat-mobile-menu-btn,
-  .mobile-overlay-backdrop {
+  .chat-mobile-menu-btn {
     display: flex !important;
   }
   .mobile-overlay-backdrop {
     display: block !important;
   }
 
-  /* App layout becomes single column */
+  /* App layout: full-screen single column */
   .app-layout {
-    flex-direction: row;
+    flex-direction: column;
     position: relative;
     overflow: hidden;
+    height: 100vh;
+    width: 100vw;
   }
 
   /* Vertical nav bar: slide off-screen to the left */
@@ -1979,16 +1981,17 @@ input, button, textarea {
     width: 70px;
   }
 
-  /* Sidebar: slide off-screen to the left (behind nav bar) */
+  /* Sidebar: slide off-screen (behind nav bar) */
   .sidebar {
     position: fixed !important;
     top: 0;
-    left: -360px;
+    left: -370px;
     height: 100%;
-    width: 290px !important;
+    width: 300px !important;
     z-index: 999;
     transition: left 0.3s ease;
     box-shadow: 4px 0 24px rgba(0,0,0,0.35);
+    overflow-y: auto;
   }
 
   /* When menu open: slide both into view */
@@ -2006,45 +2009,79 @@ input, button, textarea {
     inset: 0;
     background: rgba(0,0,0,0.5);
     z-index: 998;
-    pointer-events: all;
+    pointer-events: none;
   }
 
-  /* Main content fills full width on mobile */
+  /* Main content fills full screen on mobile */
   .main-content-pane {
-    width: 100% !important;
+    width: 100vw !important;
+    height: 100vh !important;
     flex: 1;
     min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
-  /* Chat header adjustments */
+  /* Chat pane must fill and scroll correctly */
+  .chat-pane {
+    flex: 1 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  /* Messages list scrollable */
+  .messages-list {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding: 0.75rem !important;
+    min-height: 0 !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Chat header: compact but full group name visible */
   .chat-header {
-    padding: 0.6rem 0.75rem;
-    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    flex-shrink: 0;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+  }
+  .chat-header-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
   }
   .chat-header-title {
-    font-size: 0.95rem;
+    font-size: 0.9rem !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
   }
   .chat-actions {
-    gap: 0.25rem;
+    gap: 0.2rem;
+    flex-shrink: 0;
   }
   .action-btn {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
   }
 
-  /* Messages list */
-  .messages-list {
-    padding: 0.75rem;
-  }
-
-  /* Input bar */
+  /* Input bar: fixed at bottom, no height issues */
   .chat-input-bar {
+    flex-shrink: 0;
     padding: 0.5rem 0.75rem;
   }
 
   /* White dashboard on mobile */
   .white-dashboard {
     padding: 1rem;
+    overflow-y: auto;
+    height: 100%;
   }
   .white-dashboard-title {
     font-size: 1.4rem;
@@ -2057,6 +2094,8 @@ input, button, textarea {
   /* People pane */
   .people-pane-container {
     padding: 1rem;
+    overflow-y: auto;
+    height: 100%;
   }
   .people-pane-wrapper {
     max-width: 100%;
@@ -2077,6 +2116,8 @@ input, button, textarea {
   /* Featured rooms */
   .featured-rooms-container {
     padding: 1rem 0.75rem;
+    overflow-y: auto;
+    height: 100%;
   }
   .featured-rooms-list {
     gap: 1rem;
@@ -2089,6 +2130,18 @@ input, button, textarea {
 
   /* Message bubbles max width on mobile */
   .message-bubble {
-    max-width: 80vw;
+    max-width: 78vw;
+    word-break: break-word;
+  }
+
+  /* Profile drawer on mobile: full-screen overlay */
+  .profile-drawer {
+    position: fixed !important;
+    top: 0;
+    right: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 1001;
+    overflow-y: auto;
   }
 }
