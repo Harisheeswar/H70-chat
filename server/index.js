@@ -137,35 +137,40 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
   const user = db.getUserByEmail(email);
   if (!user) {
-    // Return success anyway to protect user privacy, but log it
-    return res.json({ success: true, message: 'If this email exists, a password reset link has been generated.' });
+    return res.json({ success: true, message: 'check sent mail for password reset' });
   }
 
   const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   db.createResetToken(email, resetToken);
 
-  const resetUrl = `http://localhost:5173/reset-password?token=${resetToken}`;
+  const origin = req.get('origin') || 'https://h70-chat.onrender.com';
+  const resetUrl = `${origin}/reset-password?token=${resetToken}`;
   console.log('\n=======================================');
   console.log(`PASSWORD RESET REQUEST FOR: ${email}`);
   console.log(`RESET URL: ${resetUrl}`);
   console.log('=======================================\n');
 
   let emailSent = false;
-  // If SMTP configs exist, attempt to send a real mail
-  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+  
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = parseInt(process.env.SMTP_PORT || '465');
+  const smtpUser = process.env.SMTP_USER || 'h70support@gmail.com';
+  const smtpPass = process.env.SMTP_PASS; // Gmail SMTP App Password
+
+  if (smtpPass) {
     try {
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: parseInt(process.env.SMTP_PORT) === 465,
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
         auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
+          user: smtpUser,
+          pass: smtpPass
         }
       });
 
       await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"H70 Chat" <no-reply@h70chat.com>',
+        from: `"H70 Chat Support" <${smtpUser}>`,
         to: email,
         subject: 'Reset Password - H70 Chat',
         text: `Hello,\n\nYou requested a password reset for your account on H70. Please click on the link below to set a new password:\n\n${resetUrl}\n\nThis link is valid for 1 hour.\n\nIf you did not request this, please ignore this email.`,
@@ -173,15 +178,16 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       });
       emailSent = true;
     } catch (err) {
-      console.error('Failed to send SMTP email, falling back to sandbox simulator:', err.message);
+      console.error('Failed to send SMTP email via h70support@gmail.com:', err.message);
     }
+  } else {
+    console.log('Gmail SMTP App Password (SMTP_PASS) not set, logs show reset link.');
   }
 
   res.json({
     success: true,
-    message: 'If this email exists, a password reset link has been generated.',
-    // Expose link to frontend for easy testing if SMTP is not active
-    devLink: !emailSent ? resetUrl : undefined
+    message: 'check sent mail for password reset',
+    devLink: process.env.NODE_ENV !== 'production' && !emailSent ? resetUrl : undefined
   });
 });
 

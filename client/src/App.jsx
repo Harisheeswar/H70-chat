@@ -1207,32 +1207,6 @@ export default function App() {
   if (authScreen) {
     return (
       <div className="auth-container">
-        {/* Simulated Email Link Notice for Testing */}
-        {devEmailResetLink && (
-          <div className="dev-email-banner">
-            <div className="dev-email-banner-header">
-              <ShieldAlert size={16} /> SMTP Sandbox Simulator
-            </div>
-            <div className="dev-email-banner-body">
-              An email was "sent" with a reset link. Click below to reset:
-              <div style={{ marginTop: '0.5rem' }}>
-                <a 
-                  href={devEmailResetLink} 
-                  className="auth-link"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const tokenParam = new URL(devEmailResetLink).searchParams.get('token');
-                    setResetToken(tokenParam);
-                    setAuthScreen('reset');
-                    setDevEmailResetLink(null);
-                  }}
-                >
-                  Click here to Reset Password
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="auth-card">
           <div className="auth-header">
