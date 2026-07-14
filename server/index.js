@@ -955,6 +955,18 @@ setInterval(() => {
   }
 }, 30000); // 30 seconds interval
 
+// Serve Vite frontend client in production
+const clientDistPath = path.join(__dirname, '../client/dist');
+app.use(express.static(clientDistPath));
+app.get('*', (req, res) => {
+  const indexHtml = path.join(clientDistPath, 'index.html');
+  if (fs.existsSync(indexHtml)) {
+    res.sendFile(indexHtml);
+  } else {
+    res.status(404).send('Frontend static files not found. Run npm run build first.');
+  }
+});
+
 server.listen(PORT, () => {
   console.log(`H70 Chat Server listening on port ${PORT}`);
 });

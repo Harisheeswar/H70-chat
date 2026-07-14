@@ -6,8 +6,8 @@
       "password": "$2a$10$hnGsSp0T5g430/K7tseR1O0enmSOjimUbaLiQTYHwO830o4bLOWn2",
       "nickname": "hari980",
       "bio": "Hey there! I am using H70 Chat.",
-      "level": 3,
-      "xp": 75,
+      "level": 4,
+      "xp": 20,
       "role": "supervisor",
       "stories": [
         {
@@ -18,7 +18,7 @@
         }
       ],
       "createdAt": "2026-07-14T12:11:40.299Z",
-      "lastSeen": "2026-07-14T13:08:06.833Z",
+      "lastSeen": "2026-07-14T14:30:16.842Z",
       "soundLevel": 100
     }
   ],
