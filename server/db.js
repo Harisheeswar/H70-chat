@@ -240,6 +240,23 @@ export const db = {
       counts[m.senderId] = (counts[m.senderId] || 0) + 1;
     });
     return counts;
+  },
+  // Returns array of userIds that the given user has any DM history with
+  getDmContacts: (userId) => {
+    const data = readData();
+    const contacts = new Set();
+    data.messages.forEach(m => {
+      if (m.chatKey && m.chatKey.includes(userId)) {
+        // chatKey is "idA-idB" sorted — pick the other user
+        const parts = m.chatKey.split('-');
+        // parts can be 2 UUIDs separated by '-', but UUIDs contain '-' too
+        // chatKey was built as [userId1, userId2].sort().join('-')
+        // We identify contacts by senderId / recipientId fields
+        if (m.senderId === userId && m.recipientId) contacts.add(m.recipientId);
+        if (m.recipientId === userId && m.senderId) contacts.add(m.senderId);
+      }
+    });
+    return Array.from(contacts);
   }
 };
 

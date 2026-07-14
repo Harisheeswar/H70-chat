@@ -33,12 +33,14 @@ export default function App() {
   const [devEmailResetLink, setDevEmailResetLink] = useState(null);
 
   // App Layout States
-  const [currentNav, setCurrentNav] = useState('home'); // 'home', 'chat', 'people'
+  const [currentNav, setCurrentNav] = useState('chat'); // 'home', 'chat', 'people'
   const [activeTab, setActiveTab] = useState('rooms'); // 'rooms', 'dms', 'online'
   const [activeUserPopup, setActiveUserPopup] = useState(null); // clicked user for action dialog popup
   const [peopleTab, setPeopleTab] = useState('friends'); // 'friends', 'requests', 'blocked', 'add'
   const [peopleSearchInput, setPeopleSearchInput] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [dmContacts, setDmContacts] = useState([]); // userIds with DM history
+  const [viewingRoomMembers, setViewingRoomMembers] = useState(false); // group members panel
 
   // Create Room Modal options (screenshot 2)
   const [isPrivateRoom, setIsPrivateRoom] = useState(true);
@@ -237,7 +239,7 @@ export default function App() {
       socket.emit('identify', { token: userToken, guestNickname: guestNick });
     });
 
-    socket.on('ready', ({ user: identUser, rooms: activeRooms, unreadCounts: initialCounts }) => {
+    socket.on('ready', ({ user: identUser, rooms: activeRooms, unreadCounts: initialCounts, dmContacts: initialDmContacts }) => {
       // Set user if guest or confirm logged in profile details
       if (!userToken) {
         setUser(identUser);
@@ -247,8 +249,11 @@ export default function App() {
       }
       setRooms(activeRooms);
       setUnreadCounts(initialCounts || {});
+      if (initialDmContacts) setDmContacts(initialDmContacts);
 
-      // Auto-join General Lounge on start
+      // Auto-join General Lounge and navigate to chat on start
+      setCurrentNav('chat');
+      setActiveTab('rooms');
       const generalRoom = activeRooms.find(r => r.id === 'general');
       socket.emit('join-room', 'general');
       setCurrentChat({ 
@@ -259,6 +264,11 @@ export default function App() {
         avatar: generalRoom ? generalRoom.avatar : null,
         creatorId: generalRoom ? generalRoom.creatorId : 'system'
       });
+    });
+
+    // DM contacts list (users with chat history)
+    socket.on('dm-contacts', (contacts) => {
+      setDmContacts(contacts || []);
     });
 
     socket.on('online-users', (users) => {
@@ -1561,7 +1571,13 @@ export default function App() {
               {activeTab === 'dms' && (
                 <div style={{ padding: '0.5rem 0' }}>
                   <div className="section-title">Conversations</div>
-                  {onlineUsers.filter(u => u.id !== user?.id).map(u => (
+                  {onlineUsers.filter(u => {
+                    if (u.id === user?.id) return false;
+                    // Show if: user has DM history OR there are unread messages from them
+                    const hasHistory = dmContacts.includes(u.id);
+                    const hasUnread = (unreadCounts[u.id] || 0) > 0;
+                    return hasHistory || hasUnread;
+                  }).map(u => (
                     <div 
                       key={u.id} 
                       className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
@@ -1595,9 +1611,10 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                  {onlineUsers.filter(u => u.id !== user?.id).length === 0 && (
-                    <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      No registered users found.
+                  {onlineUsers.filter(u => u.id !== user?.id && (dmContacts.includes(u.id) || (unreadCounts[u.id] || 0) > 0)).length === 0 && (
+                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                      <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>💬</div>
+                      No conversations yet.<br/>Start a DM by clicking on a user in a room!
                     </div>
                   )}
                 </div>
@@ -1768,10 +1785,25 @@ export default function App() {
                     )}
                   </div>
                   <div>
-                    <div className="chat-header-title">
+                    <div 
+                      className="chat-header-title"
+                      onClick={() => {
+                        if (currentChat.type === 'room') {
+                          setViewingRoomSettings(!viewingRoomSettings);
+                          setSelectedProfileUser(null);
+                        }
+                      }}
+                      style={{ cursor: currentChat.type === 'room' ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                      title={currentChat.type === 'room' ? 'Click to view room members & settings' : ''}
+                    >
                       {currentChat.type === 'room' ? currentChat.name : currentChat.nickname}
+                      {currentChat.type === 'room' && <ChevronDown size={14} style={{ opacity: 0.7 }} />}
                     </div>
-                    {currentChat.type === 'dm' && (
+                    {currentChat.type === 'room' ? (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
+                        {onlineUsers.filter(u => u.isOnline).length} online · click name for members
+                      </div>
+                    ) : (
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                         {(() => {
                           const recipient = onlineUsers.find(u => u.id === currentChat.id);
@@ -2329,8 +2361,9 @@ export default function App() {
           <div className="profile-name">
             {currentChat.name}
           </div>
-          <div className="profile-email">
-            Public Chat Room
+          <div className="profile-email" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+            <Users size={13} />
+            {getCombinedUsersWithStatus().length} Members
           </div>
 
           {/* Group Avatar Upload (Admins, Owner/Creator, or default system creator rooms for testing) */}
@@ -2369,8 +2402,10 @@ export default function App() {
           )}
 
           {/* Combined Users List showing Online (Green) and Offline (Red) */}
-          <div className="bio-title" style={{ marginTop: '0.5rem' }}>Room Members status</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px', marginBottom: '1.5rem' }}>
+          <div className="bio-title" style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Users size={13} /> Room Members ({getCombinedUsersWithStatus().length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '320px', overflowY: 'auto', paddingRight: '4px', marginBottom: '1.5rem' }}>
             {getCombinedUsersWithStatus().map(u => {
               const isRoomAdmin = currentChat.admins?.includes(u.id) || currentChat.creatorId === u.id;
               return (

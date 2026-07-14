@@ -502,7 +502,8 @@ io.on('connection', (socket) => {
     socket.emit('ready', { 
       user: userDetails, 
       rooms: db.getRooms(),
-      unreadCounts: db.getUnreadDmCounts(userDetails.id)
+      unreadCounts: db.getUnreadDmCounts(userDetails.id),
+      dmContacts: userDetails.isGuest ? [] : db.getDmContacts(userDetails.id)
     });
   });
 
@@ -523,6 +524,14 @@ io.on('connection', (socket) => {
     // Send previous room messages
     const roomMessages = db.getMessages({ roomId });
     socket.emit('room-history', { roomId, messages: roomMessages });
+  });
+
+  // Return list of users the logged-in user has DM history with
+  socket.on('get-dm-contacts', () => {
+    const user = activeSockets.get(socket.id);
+    if (!user || user.isGuest) return socket.emit('dm-contacts', []);
+    const contacts = db.getDmContacts(user.id);
+    socket.emit('dm-contacts', contacts);
   });
 
   // Create custom room
@@ -697,6 +706,12 @@ io.on('connection', (socket) => {
     const recipientSocketId = activeUsers.get(recipientId);
     if (recipientSocketId) {
       io.to(recipientSocketId).emit('direct-message', msg);
+    }
+
+    // Update dm-contacts for both parties so DM list updates live
+    socket.emit('dm-contacts', db.getDmContacts(user.id));
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('dm-contacts', db.getDmContacts(recipientId));
     }
   });
 
