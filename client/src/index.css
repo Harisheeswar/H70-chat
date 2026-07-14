@@ -1716,8 +1716,8 @@ input, button, textarea {
 }
 
 .main-content-pane .message-wrapper.outgoing .message-bubble {
-  background: var(--bg-accent) !important;
-  color: #ffffff !important;
+  background: #e8edf5 !important;
+  color: #1f2937 !important;
   border-radius: 12px;
 }
 
@@ -1944,3 +1944,151 @@ input, button, textarea {
   color: #1f2937;
 }
 
+
+/* ================================================
+   RESPONSIVE MOBILE LAYOUT  (≤ 768px)
+   ================================================ */
+@media (max-width: 768px) {
+  /* Show mobile-specific buttons */
+  .mobile-menu-btn,
+  .mobile-close-btn,
+  .mobile-home-header,
+  .chat-mobile-menu-btn,
+  .mobile-overlay-backdrop {
+    display: flex !important;
+  }
+  .mobile-overlay-backdrop {
+    display: block !important;
+  }
+
+  /* App layout becomes single column */
+  .app-layout {
+    flex-direction: row;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Vertical nav bar: slide off-screen to the left */
+  .vertical-nav-bar {
+    position: fixed !important;
+    top: 0;
+    left: -90px;
+    height: 100%;
+    z-index: 1000;
+    transition: left 0.3s ease;
+    width: 70px;
+  }
+
+  /* Sidebar: slide off-screen to the left (behind nav bar) */
+  .sidebar {
+    position: fixed !important;
+    top: 0;
+    left: -360px;
+    height: 100%;
+    width: 290px !important;
+    z-index: 999;
+    transition: left 0.3s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.35);
+  }
+
+  /* When menu open: slide both into view */
+  .app-layout.mobile-menu-open .vertical-nav-bar {
+    left: 0;
+  }
+  .app-layout.mobile-menu-open .sidebar {
+    left: 70px;
+  }
+
+  /* Overlay backdrop when menu is open */
+  .app-layout.mobile-menu-open::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 998;
+    pointer-events: all;
+  }
+
+  /* Main content fills full width on mobile */
+  .main-content-pane {
+    width: 100% !important;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Chat header adjustments */
+  .chat-header {
+    padding: 0.6rem 0.75rem;
+    gap: 0.4rem;
+  }
+  .chat-header-title {
+    font-size: 0.95rem;
+  }
+  .chat-actions {
+    gap: 0.25rem;
+  }
+  .action-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Messages list */
+  .messages-list {
+    padding: 0.75rem;
+  }
+
+  /* Input bar */
+  .chat-input-bar {
+    padding: 0.5rem 0.75rem;
+  }
+
+  /* White dashboard on mobile */
+  .white-dashboard {
+    padding: 1rem;
+  }
+  .white-dashboard-title {
+    font-size: 1.4rem;
+  }
+  .white-dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  /* People pane */
+  .people-pane-container {
+    padding: 1rem;
+  }
+  .people-pane-wrapper {
+    max-width: 100%;
+    padding: 0;
+  }
+  .people-pane-tabs {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  .people-pane-tab-btn {
+    font-size: 0.7rem;
+    padding: 0.4rem 0.6rem;
+  }
+  .people-pane-content {
+    padding: 1rem;
+  }
+
+  /* Featured rooms */
+  .featured-rooms-container {
+    padding: 1rem 0.75rem;
+  }
+  .featured-rooms-list {
+    gap: 1rem;
+  }
+
+  /* Sidebar header close button visible */
+  .sidebar-header .mobile-close-btn {
+    display: flex !important;
+  }
+
+  /* Message bubbles max width on mobile */
+  .message-bubble {
+    max-width: 80vw;
+  }
+}

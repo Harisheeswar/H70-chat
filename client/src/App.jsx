@@ -4,7 +4,7 @@ import {
   MessageSquare, Users, User, Plus, Send, Image, Mic, Square, Trash2, 
   Video, Phone, PhoneOff, MicOff, VideoOff, Edit, X, Compass, Award, 
   BookOpen, LogOut, CheckCircle, Mail, Key, ShieldAlert,
-  Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, Search
+  Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, Search, Menu
 } from 'lucide-react';
 
 // Level Tiers Helper
@@ -38,6 +38,7 @@ export default function App() {
   const [activeUserPopup, setActiveUserPopup] = useState(null); // clicked user for action dialog popup
   const [peopleTab, setPeopleTab] = useState('friends'); // 'friends', 'requests', 'blocked', 'add'
   const [peopleSearchInput, setPeopleSearchInput] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Create Room Modal options (screenshot 2)
   const [isPrivateRoom, setIsPrivateRoom] = useState(true);
@@ -637,6 +638,7 @@ export default function App() {
   const handleSelectChat = (item, type) => {
     setSelectedProfileUser(null);
     setViewingRoomSettings(false);
+    setMobileMenuOpen(false);
     if (type === 'room') {
       setCurrentChat({ type: 'room', id: item.id, name: item.name, admins: item.admins || [], avatar: item.avatar || null, creatorId: item.creatorId || null });
       setMessages([]);
@@ -1380,7 +1382,15 @@ export default function App() {
 
   // 2. Chat Dashboard layout
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
+      {/* Mobile backdrop overlay - tap to close menu */}
+      {mobileMenuOpen && (
+        <div 
+          className="mobile-overlay-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 997, display: 'none' }}
+        />
+      )}
       {/* COLUMN 1: Far Left Vertical Navigation Bar */}
       <div className="vertical-nav-bar">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
@@ -1389,17 +1399,17 @@ export default function App() {
             H
           </div>
 
-          <button className={`vertical-nav-btn ${currentNav === 'home' ? 'active' : ''}`} onClick={() => setCurrentNav('home')} title="Home Dashboard">
+          <button className={`vertical-nav-btn ${currentNav === 'home' ? 'active' : ''}`} onClick={() => { setCurrentNav('home'); setMobileMenuOpen(false); }} title="Home Dashboard">
             <Compass size={20} />
             <span>Home</span>
           </button>
 
-          <button className={`vertical-nav-btn ${currentNav === 'chat' ? 'active' : ''}`} onClick={() => setCurrentNav('chat')} title="Channels & Chat">
+          <button className={`vertical-nav-btn ${currentNav === 'chat' ? 'active' : ''}`} onClick={() => { setCurrentNav('chat'); setMobileMenuOpen(false); }} title="Channels & Chat">
             <MessageSquare size={20} />
             <span>Chat</span>
           </button>
 
-          <button className={`vertical-nav-btn ${currentNav === 'people' ? 'active' : ''}`} onClick={() => setCurrentNav('people')} title="Social Friends & Blocks">
+          <button className={`vertical-nav-btn ${currentNav === 'people' ? 'active' : ''}`} onClick={() => { setCurrentNav('people'); setMobileMenuOpen(false); }} title="Social Friends & Blocks">
             <Users size={20} />
             <span>People</span>
           </button>
@@ -1439,12 +1449,19 @@ export default function App() {
 
       {/* COLUMN 2: Middle List Sidebar (Guidelines, Channels list, Friends list) */}
       <div className="sidebar">
-        <div className="sidebar-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="sidebar-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <div className="app-brand" style={{ fontSize: '1.05rem', letterSpacing: '0.5px' }}>
             {currentNav === 'home' && 'Guidelines'}
             {currentNav === 'chat' && 'Active Channels'}
             {currentNav === 'people' && 'Social Roster'}
           </div>
+          <button 
+            className="mobile-close-btn" 
+            onClick={() => setMobileMenuOpen(false)}
+            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', display: 'none', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {/* User XP progression block inside home tab */}
@@ -1667,6 +1684,16 @@ export default function App() {
         {/* NAV 1: HOME FEED DASHBOARD */}
         {currentNav === 'home' && (
           <div className="white-dashboard">
+            <div className="mobile-home-header" style={{ display: 'none', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+              <button 
+                className="mobile-menu-btn" 
+                onClick={() => setMobileMenuOpen(true)}
+                style={{ background: 'transparent', border: 'none', color: '#1f2937', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Menu size={24} />
+              </button>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1f2937' }}>H70 Home</h2>
+            </div>
             <h1 className="white-dashboard-title">
               Hello, {user?.nickname || 'Guest'}!
             </h1>
@@ -1712,7 +1739,15 @@ export default function App() {
           currentChat ? (
             <div className="chat-pane" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               {/* Chat header panel */}
-              <div className="chat-header">
+              <div className="chat-header" style={{ position: 'relative' }}>
+                {/* Mobile hamburger inside chat header */}
+                <button
+                  className="mobile-menu-btn chat-mobile-menu-btn"
+                  onClick={() => setMobileMenuOpen(true)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'none', alignItems: 'center', justifyContent: 'center', marginRight: '0.5rem' }}
+                >
+                  <Menu size={22} />
+                </button>
                 <div className="chat-header-info">
                   <div className="avatar-circle" style={{ width: '40px', height: '40px', fontSize: '0.9rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                     {currentChat.type === 'room' ? (
@@ -1821,6 +1856,11 @@ export default function App() {
                   const isOutgoing = msg.senderId === user?.id;
                   const showAvatar = i === 0 || messages[i - 1].senderId !== msg.senderId;
                   const sender = onlineUsers.find(u => u.id === msg.senderId);
+                  // Schema fallbacks: DB stores createdAt/content/type, live msgs use timestamp/text/mediaType
+                  const displayTime = msg.timestamp || msg.createdAt;
+                  const displayText = msg.text || (msg.type === 'text' ? msg.content : '') || '';
+                  const displayMediaType = msg.mediaType || (msg.type !== 'text' ? msg.type : null);
+                  const displayMediaUrl = msg.mediaUrl || (msg.type !== 'text' ? msg.content : '');
 
                   return (
                     <div key={msg.id || i} className={`message-wrapper ${isOutgoing ? 'outgoing' : ''}`}>
@@ -1857,26 +1897,26 @@ export default function App() {
                             >
                               {msg.senderNickname}
                             </span>
-                            <span className="message-time">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="message-time">{displayTime ? new Date(displayTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                           </div>
                         )}
 
                         <div className="message-bubble">
-                          {msg.mediaType === 'image' && (
+                          {displayMediaType === 'image' && (
                             <img 
-                              src={msg.mediaUrl} 
+                              src={displayMediaUrl} 
                               alt="Shared media" 
                               className="message-media-preview"
-                              onClick={() => setLightboxImage(msg.mediaUrl)}
+                              onClick={() => setLightboxImage(displayMediaUrl)}
                               style={{ cursor: 'pointer', maxWidth: '240px', borderRadius: '8px', marginBottom: '0.4rem' }}
                             />
                           )}
-                          {msg.mediaType === 'audio' && (
+                          {displayMediaType === 'audio' && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '180px', padding: '0.25rem 0' }}>
-                              <audio src={msg.mediaUrl} controls style={{ height: '36px', maxWidth: '220px' }} />
+                              <audio src={displayMediaUrl} controls style={{ height: '36px', maxWidth: '220px' }} />
                             </div>
                           )}
-                          {msg.text && <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>}
+                          {displayText && <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{displayText}</div>}
                           
                           {/* Message tick receipts */}
                           {isOutgoing && currentChat.type === 'dm' && (
