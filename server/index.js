@@ -152,22 +152,33 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
   let emailSent = false;
   
-  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const smtpPort = parseInt(process.env.SMTP_PORT || '465');
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : null;
   const smtpUser = process.env.SMTP_USER || 'h70support@gmail.com';
   const smtpPass = process.env.SMTP_PASS; // Gmail SMTP App Password
 
   if (smtpPass) {
     try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass
-        }
-      });
+      let transporter;
+      if (!smtpHost && smtpUser.endsWith('@gmail.com')) {
+        transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+      } else {
+        transporter = nodemailer.createTransport({
+          host: smtpHost || 'smtp.gmail.com',
+          port: smtpPort || 465,
+          secure: (smtpPort || 465) === 465,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+      }
 
       await transporter.sendMail({
         from: `"H70 Chat Support" <${smtpUser}>`,
