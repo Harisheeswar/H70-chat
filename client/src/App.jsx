@@ -4,7 +4,7 @@ import {
   MessageSquare, Users, User, Plus, Send, Image, Mic, Square, Trash2, 
   Video, Phone, PhoneOff, MicOff, VideoOff, Edit, X, Compass, Award, 
   BookOpen, LogOut, CheckCircle, Mail, Key, ShieldAlert,
-  Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, Search, Menu
+  Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu
 } from 'lucide-react';
 
 // Level Tiers Helper
@@ -103,6 +103,7 @@ export default function App() {
   const peerConnectionRef = useRef(null);
 
   const [unreadCounts, setUnreadCounts] = useState({});
+  const totalUnread = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   const currentChatRef = useRef(currentChat);
   useEffect(() => {
@@ -113,6 +114,75 @@ export default function App() {
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+
+  const roomsRef = useRef(rooms);
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
+
+  const onlineUsersRef = useRef(onlineUsers);
+  useEffect(() => {
+    onlineUsersRef.current = onlineUsers;
+  }, [onlineUsers]);
+
+  const isPopStateRef = useRef(false);
+
+  // Sync state with browser history (popstate / back button)
+  useEffect(() => {
+    // Initial state setup
+    window.history.replaceState({ nav: currentNav, chatId: currentChat?.id, chatType: currentChat?.type }, '');
+
+    const handlePopState = (event) => {
+      if (event.state) {
+        const { nav, chatId, chatType } = event.state;
+        isPopStateRef.current = true;
+        setCurrentNav(nav || 'home');
+        if (chatId) {
+          if (chatType === 'room') {
+            const roomObj = roomsRef.current.find(r => r.id === chatId);
+            if (roomObj) {
+              setCurrentChat({ 
+                type: 'room', 
+                id: roomObj.id, 
+                name: roomObj.name, 
+                admins: roomObj.admins || [], 
+                avatar: roomObj.avatar || null, 
+                creatorId: roomObj.creatorId || null 
+              });
+            } else {
+              setCurrentChat({ type: 'room', id: chatId, name: 'Lounge' });
+            }
+          } else {
+            const userObj = onlineUsersRef.current.find(u => u.id === chatId);
+            if (userObj) {
+              setCurrentChat({ type: 'dm', id: userObj.id, nickname: userObj.nickname });
+            } else {
+              setCurrentChat({ type: 'dm', id: chatId, nickname: 'User' });
+            }
+          }
+        } else {
+          setCurrentChat(null);
+        }
+      } else {
+        isPopStateRef.current = true;
+        setCurrentNav('home');
+        setCurrentChat(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Whenever nav or chat changes, push state if not popstate
+  useEffect(() => {
+    if (isPopStateRef.current) {
+      isPopStateRef.current = false;
+      return;
+    }
+    const state = { nav: currentNav, chatId: currentChat?.id, chatType: currentChat?.type };
+    window.history.pushState(state, '');
+  }, [currentNav, currentChat]);
 
   // Parse reset password token from URL on mount
   useEffect(() => {
@@ -1727,9 +1797,12 @@ export default function App() {
               <button 
                 className="mobile-menu-btn" 
                 onClick={() => setMobileMenuOpen(true)}
-                style={{ background: 'transparent', border: 'none', color: '#1f2937', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ background: 'transparent', border: 'none', color: '#1f2937', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
               >
                 <Menu size={24} />
+                {totalUnread > 0 && (
+                  <span className="mobile-unread-badge">{totalUnread}</span>
+                )}
               </button>
               <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1f2937' }}>H70 Home</h2>
             </div>
@@ -1781,11 +1854,14 @@ export default function App() {
               <div className="chat-header" style={{ position: 'relative' }}>
                 {/* Mobile hamburger inside chat header */}
                 <button
-                  className="mobile-menu-btn chat-mobile-menu-btn"
-                  onClick={() => setMobileMenuOpen(true)}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'none', alignItems: 'center', justifyContent: 'center', marginRight: '0.5rem' }}
+                  className="mobile-back-btn"
+                  onClick={() => setCurrentChat(null)}
+                  style={{ background: 'transparent', border: 'none', color: '#111827', cursor: 'pointer', padding: '4px', display: 'none', alignItems: 'center', justifyContent: 'center', marginRight: '0.5rem', position: 'relative' }}
                 >
-                  <Menu size={22} />
+                  <ChevronLeft size={24} />
+                  {totalUnread > 0 && (
+                    <span className="mobile-unread-badge" style={{ top: '-2px', right: '-2px' }}>{totalUnread}</span>
+                  )}
                 </button>
                 <div className="chat-header-info">
                   <div className="avatar-circle" style={{ width: '40px', height: '40px', fontSize: '0.9rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -2111,6 +2187,19 @@ export default function App() {
             </div>
           ) : (
             <div className="featured-rooms-container">
+              <div className="mobile-home-header" style={{ display: 'none', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <button 
+                  className="mobile-menu-btn" 
+                  onClick={() => setMobileMenuOpen(true)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+                >
+                  <Menu size={24} />
+                  {totalUnread > 0 && (
+                    <span className="mobile-unread-badge">{totalUnread}</span>
+                  )}
+                </button>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>Chat Lounges</h2>
+              </div>
               <h1 className="featured-rooms-title">Featured Channels</h1>
               <div className="featured-rooms-list">
                 <div className="featured-rooms-card">
@@ -2164,6 +2253,19 @@ export default function App() {
         {currentNav === 'people' && (
           <div className="people-pane-container">
             <div className="people-pane-wrapper">
+              <div className="mobile-home-header" style={{ display: 'none', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <button 
+                  className="mobile-menu-btn" 
+                  onClick={() => setMobileMenuOpen(true)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+                >
+                  <Menu size={24} />
+                  {totalUnread > 0 && (
+                    <span className="mobile-unread-badge">{totalUnread}</span>
+                  )}
+                </button>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>People</h2>
+              </div>
               <h1 className="people-pane-title">Social Roster</h1>
               
               <div className="people-pane-tabs">
