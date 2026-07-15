@@ -321,19 +321,10 @@ export default function App() {
       setUnreadCounts(initialCounts || {});
       if (initialDmContacts) setDmContacts(initialDmContacts);
 
-      // Auto-join General Lounge and navigate to chat on start
+      // Land on active channels list on start
       setCurrentNav('chat');
       setActiveTab('rooms');
-      const generalRoom = activeRooms.find(r => r.id === 'general');
-      socket.emit('join-room', 'general');
-      setCurrentChat({ 
-        type: 'room', 
-        id: 'general', 
-        name: 'General Lounge',
-        admins: generalRoom ? generalRoom.admins : [],
-        avatar: generalRoom ? generalRoom.avatar : null,
-        creatorId: generalRoom ? generalRoom.creatorId : 'system'
-      });
+      setCurrentChat(null);
     });
 
     // DM contacts list (users with chat history)
@@ -2689,40 +2680,6 @@ export default function App() {
             {selectedProfileUser.id.startsWith('guest_') ? 'Anonymous Guest' : 'Registered Member'}
           </div>
 
-          {/* Stories list */}
-          <div className="bio-title">Stories Feed</div>
-          <div className="stories-list-horizontal">
-            {/* Allow current user to post a story */}
-            {selectedProfileUser.id === user?.id && token && (
-              <div className="btn-add-story" onClick={() => setIsAddingStory(true)} title="Add to Story">
-                <Plus size={20} />
-                <span style={{ fontSize: '0.6rem', marginTop: '2px', fontWeight: 600 }}>Post</span>
-              </div>
-            )}
-            
-            {/* Show list of active stories */}
-            {selectedProfileUser.stories && selectedProfileUser.stories.length > 0 ? (
-              <div 
-                className="story-circle" 
-                onClick={() => setStoriesViewer({ 
-                  userId: selectedProfileUser.id, 
-                  stories: selectedProfileUser.stories, 
-                  index: 0 
-                })}
-              >
-                <div className="story-avatar-inner">
-                  👁️ View
-                </div>
-              </div>
-            ) : (
-              selectedProfileUser.id !== user?.id && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                  No stories posted
-                </div>
-              )
-            )}
-          </div>
-
           <div className="profile-stats-card">
             <div className="profile-stat-row">
               <span className="text-secondary">Current Level</span>
@@ -2735,6 +2692,44 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {/* Stories list */}
+          {((selectedProfileUser.stories && selectedProfileUser.stories.length > 0) || (selectedProfileUser.id === user?.id && token) || (selectedProfileUser.id !== user?.id)) && (
+            <div className="bio-section">
+              <div className="bio-title">Stories Feed</div>
+              <div className="stories-list-horizontal">
+                {/* Allow current user to post a story */}
+                {selectedProfileUser.id === user?.id && token && (
+                  <div className="btn-add-story" onClick={() => setIsAddingStory(true)} title="Add to Story">
+                    <Plus size={20} />
+                    <span style={{ fontSize: '0.6rem', marginTop: '2px', fontWeight: 600 }}>Post</span>
+                  </div>
+                )}
+                
+                {/* Show list of active stories */}
+                {selectedProfileUser.stories && selectedProfileUser.stories.length > 0 ? (
+                  <div 
+                    className="story-circle" 
+                    onClick={() => setStoriesViewer({ 
+                      userId: selectedProfileUser.id, 
+                      stories: selectedProfileUser.stories, 
+                      index: 0 
+                    })}
+                  >
+                    <div className="story-avatar-inner">
+                      👁️ View
+                    </div>
+                  </div>
+                ) : (
+                  selectedProfileUser.id !== user?.id && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                      No stories posted
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="bio-section">
             <div className="bio-title">User Bio</div>
