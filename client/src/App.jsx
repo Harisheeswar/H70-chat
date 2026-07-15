@@ -68,6 +68,9 @@ export default function App() {
   const [storyType, setStoryType] = useState('text'); // 'text' or 'image'
   const [storyContent, setStoryContent] = useState('');
   const [storyFile, setStoryFile] = useState(null);
+  const [isEmojiOpen, setIsEmojiOpen] = useState(false);
+  const [roomSearchInput, setRoomSearchInput] = useState('');
+  const [theme, setTheme] = useState(localStorage.getItem('h70_theme') || 'dark');
 
   // Voice Message States
   const [isRecording, setIsRecording] = useState(false);
@@ -110,6 +113,15 @@ export default function App() {
   useEffect(() => {
     currentChatRef.current = currentChat;
   }, [currentChat]);
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light-theme');
+    } else {
+      document.documentElement.classList.remove('light-theme');
+    }
+    localStorage.setItem('h70_theme', theme);
+  }, [theme]);
 
   const userRef = useRef(user);
   useEffect(() => {
@@ -1714,7 +1726,20 @@ export default function App() {
                       <Plus size={12} /> Create Space
                     </button>
                   </div>
-                  {rooms.map(room => (
+
+                  {/* Room Search Bar */}
+                  <div style={{ padding: '0 0.5rem 0.5rem', position: 'relative' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Search lounges..." 
+                      value={roomSearchInput}
+                      onChange={(e) => setRoomSearchInput(e.target.value)}
+                      style={{ width: '100%', padding: '0.45rem 0.75rem', paddingRight: '2rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.15)', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+                    />
+                    <Search size={14} style={{ position: 'absolute', right: '14px', top: '10px', opacity: 0.5 }} />
+                  </div>
+
+                  {rooms.filter(r => r.name.toLowerCase().includes(roomSearchInput.toLowerCase())).map(room => (
                     <div 
                        key={room.id} 
                        className={`list-item ${currentChat?.type === 'room' && currentChat.id === room.id ? 'active' : ''}`}
@@ -2279,10 +2304,39 @@ export default function App() {
                         />
                       </label>
 
-                      {/* Micro recorder trigger */}
+                       {/* Micro recorder trigger */}
                       <button className="input-icon-btn" onClick={startRecording} title="Record Voice Message">
                         <Mic size={20} />
                       </button>
+
+                      {/* Emoji trigger */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <button 
+                          className="input-icon-btn" 
+                          onClick={() => setIsEmojiOpen(!isEmojiOpen)} 
+                          title="Insert Emoji"
+                          style={{ fontSize: '1.25rem', padding: '2px' }}
+                        >
+                          😊
+                        </button>
+                        {isEmojiOpen && (
+                          <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '6px', display: 'flex', gap: '6px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                            {['😂', '❤️', '👍', '🔥', '😍', '🎉', '🚀', '😭', '👏', '👀'].map(emoji => (
+                              <span 
+                                key={emoji} 
+                                onClick={() => {
+                                  setMsgText(prev => prev + emoji);
+                                  setIsEmojiOpen(false);
+                                }}
+                                style={{ cursor: 'pointer', fontSize: '1.2rem', padding: '2px', transition: 'transform 0.1s' }}
+                                className="emoji-hover-scale"
+                              >
+                                {emoji}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
                       <input 
                         type="text" 
@@ -2909,6 +2963,29 @@ export default function App() {
           {selectedProfileUser.id === user?.id && token && (
             <div className="bio-section" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem', marginTop: '1.25rem' }}>
               <div className="bio-title">App Settings</div>
+              
+              {/* Theme Toggle Switch */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                <span className="text-secondary" style={{ fontSize: '0.8rem' }}>Light Theme Mode</span>
+                <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '40px', height: '20px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={theme === 'light'}
+                    onChange={(e) => setTheme(e.target.checked ? 'light' : 'dark')}
+                    style={{ opacity: 0, width: 0, height: 0 }}
+                  />
+                  <span className="slider round" style={{
+                    position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: theme === 'light' ? 'var(--bg-accent-teal)' : '#333',
+                    transition: '.3s', borderRadius: '20px'
+                  }}>
+                    <span style={{
+                      position: 'absolute', content: '""', height: '14px', width: '14px', left: theme === 'light' ? '22px' : '4px', bottom: '3px',
+                      backgroundColor: 'white', transition: '.3s', borderRadius: '50%'
+                    }} />
+                  </span>
+                </label>
+              </div>
               
               {/* Privacy Mode Toggle */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1.25rem' }}>
