@@ -9,6 +9,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Auto-reload the page if any script or style fails to load (e.g. after a redeploy/cache bust)
+      window.addEventListener('error', function(e) {
+        const target = e.target || e.srcElement;
+        if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
+          const lastReload = sessionStorage.getItem('h70_last_reload');
+          const now = Date.now();
+          // Avoid infinite loops: only reload if we haven't reloaded in the last 10 seconds
+          if (!lastReload || (now - parseInt(lastReload) > 10000)) {
+            sessionStorage.setItem('h70_last_reload', now);
+            console.warn('Asset failed to load, reloading to fetch latest version...', target.src || target.href);
+            window.location.reload(true);
+          }
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root">

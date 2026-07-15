@@ -989,10 +989,22 @@ setInterval(() => {
 
 // Serve Vite frontend client in production
 const clientDistPath = path.join(__dirname, '../client/dist');
-app.use(express.static(clientDistPath));
+app.use(express.static(clientDistPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
+
 app.get('*', (req, res) => {
   const indexHtml = path.join(clientDistPath, 'index.html');
   if (fs.existsSync(indexHtml)) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(indexHtml);
   } else {
     res.status(404).send('Frontend static files not found. Run npm run build first.');
