@@ -429,11 +429,12 @@ app.post('/api/report', authenticateToken, (req, res) => {
 
 // 15. Settings: Update User Settings
 app.post('/api/profile/settings', authenticateToken, (req, res) => {
-  const { privacyMode, soundLevel, notificationsEnabled } = req.body;
+  const { privacyMode, soundLevel, notificationsEnabled, animal } = req.body;
   const updates = {};
   if (privacyMode !== undefined) updates.privacyMode = privacyMode;
   if (soundLevel !== undefined) updates.soundLevel = parseInt(soundLevel);
   if (notificationsEnabled !== undefined) updates.notificationsEnabled = !!notificationsEnabled;
+  if (animal !== undefined) updates.animal = animal;
   
   const updated = db.updateUser(req.user.id, updates);
   
@@ -443,6 +444,7 @@ app.post('/api/profile/settings', authenticateToken, (req, res) => {
       if (privacyMode !== undefined) activeUser.privacyMode = privacyMode;
       if (soundLevel !== undefined) activeUser.soundLevel = parseInt(soundLevel);
       if (notificationsEnabled !== undefined) activeUser.notificationsEnabled = !!notificationsEnabled;
+      if (animal !== undefined) activeUser.animal = animal;
     }
   }
   sendOnlineUsersList();
@@ -680,6 +682,7 @@ io.on('connection', (socket) => {
       senderId: user.id,
       senderNickname: user.nickname,
       senderLevel: user.level,
+      senderAnimal: user.animal || null,
       type, // 'text', 'image', 'audio'
       content
     });
@@ -720,6 +723,7 @@ io.on('connection', (socket) => {
       senderId: user.id,
       senderNickname: user.nickname,
       senderLevel: user.level,
+      senderAnimal: user.animal || null,
       recipientId,
       type,
       content

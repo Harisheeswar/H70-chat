@@ -246,6 +246,7 @@ export const db = {
       senderId: msg.senderId,
       senderNickname: msg.senderNickname,
       senderLevel: msg.senderLevel || 1,
+      senderAnimal: msg.senderAnimal || null,
       recipientId: msg.recipientId || null,
       type: msg.type || 'text', // 'text', 'image', 'audio'
       content: msg.content,

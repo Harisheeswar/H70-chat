@@ -7,6 +7,8 @@ import {
   Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu, Gamepad2
 } from 'lucide-react';
 
+import { ANIMALS_LIST } from './animals';
+
 // Level Tiers Helper
 const getLevelTier = (level) => {
   if (level >= 20) return { name: 'Diamond', class: 'level-diamond' };
@@ -1785,7 +1787,7 @@ export default function App() {
               </div>
               <div className="user-meta-info">
                 <div className="nickname-display" style={{ fontSize: '0.85rem' }}>
-                  {user.nickname}
+                  {user.nickname} {user.animal ? ' ' + user.animal.split(' ')[0] : ''}
                   <span className={`level-badge ${getLevelTier(user.level || 1).class}`}>
                     Lv {user.level || 1}
                   </span>
@@ -1935,7 +1937,7 @@ export default function App() {
                       <div className="list-item-info">
                         <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                            {u.nickname}
+                            {u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''}
                             <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
                               L{u.level}
                             </span>
@@ -1982,7 +1984,7 @@ export default function App() {
                       </div>
                       <div className="list-item-info">
                         <div className="list-item-title">
-                          {u.nickname} {u.id === user?.id && '(You)'}
+                           {u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''} {u.id === user?.id && '(You)'}
                           <span className={`level-badge ${getLevelTier(u.level || 1).class}`}>
                             Lv {u.level || 1}
                           </span>
@@ -2172,7 +2174,7 @@ export default function App() {
                       style={{ cursor: currentChat.type === 'room' ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                       title={currentChat.type === 'room' ? 'Click to view room members & settings' : ''}
                     >
-                      {currentChat.type === 'room' ? currentChat.name : currentChat.nickname}
+                      {currentChat.type === 'room' ? currentChat.name : `${currentChat.nickname} ${onlineUsers.find(u => u.id === currentChat.id)?.animal ? ' ' + onlineUsers.find(u => u.id === currentChat.id).animal.split(' ')[0] : ''}`}
                       {currentChat.type === 'room' && <ChevronDown size={14} style={{ opacity: 0.7 }} />}
                     </div>
                     {currentChat.type === 'room' ? (
@@ -2298,7 +2300,7 @@ export default function App() {
                               style={{ cursor: 'pointer' }}
                               onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
                             >
-                              {msg.senderNickname}
+                              {msg.senderNickname} {msg.senderAnimal ? ' ' + msg.senderAnimal.split(' ')[0] : (sender?.animal ? ' ' + sender.animal.split(' ')[0] : '')}
                             </span>
                             <span className="message-time">{displayTime ? new Date(displayTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                           </div>
@@ -2678,7 +2680,7 @@ export default function App() {
                             {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div style={{ fontWeight: 700, color: '#111827' }}>{u.nickname}</div>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''}</div>
                             <div style={{ fontSize: '0.8rem', color: u.isOnline ? 'var(--success)' : '#9ca3af' }}>
                               {u.isOnline ? 'Online' : `Offline • Left ${formatLastSeen(u.lastSeen)}`}
                             </div>
@@ -2721,7 +2723,7 @@ export default function App() {
                             {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div style={{ fontWeight: 700, color: '#111827' }}>{u.nickname}</div>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''}</div>
                             <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>sent you a friend invitation!</div>
                           </div>
                         </div>
@@ -2756,7 +2758,7 @@ export default function App() {
                           <div className="avatar-circle" style={{ width: '40px', height: '40px', overflow: 'hidden', border: '1px solid #e5e7eb', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                             {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 2).toUpperCase()}
                           </div>
-                          <div style={{ fontWeight: 700, color: '#111827' }}>{u.nickname}</div>
+                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''}</div>
                         </div>
                         <button className="btn btn-secondary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }} onClick={async () => {
                           try {
@@ -2805,8 +2807,8 @@ export default function App() {
                                 <div className="avatar-circle" style={{ width: '40px', height: '40px', overflow: 'hidden', border: '1px solid #e5e7eb', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                                   {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 2).toUpperCase()}
                                 </div>
-                                <div style={{ fontWeight: 700, color: '#111827' }}>
-                                  {u.nickname}
+                                <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  {u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''}
                                   {state === 'friends' && <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>Friend</span>}
                                 </div>
                               </div>
@@ -3068,13 +3070,19 @@ export default function App() {
           )}
 
           <div className="profile-name">
-            {selectedProfileUser.nickname}
+            {selectedProfileUser.nickname} {selectedProfileUser.animal ? ' ' + selectedProfileUser.animal.split(' ')[0] : ''}
           </div>
           <div className="profile-email">
             {selectedProfileUser.id.startsWith('guest_') ? 'Anonymous Guest' : 'Registered Member'}
           </div>
 
           <div className="profile-stats-card">
+            {selectedProfileUser.animal && (
+              <div className="profile-stat-row" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
+                <span className="text-secondary">Spirit Animal</span>
+                <span className="font-semibold text-primary">{selectedProfileUser.animal}</span>
+              </div>
+            )}
             <div className="profile-stat-row">
               <span className="text-secondary">Current Level</span>
               <span className="font-semibold text-primary">{selectedProfileUser.level || 1} ({getLevelTier(selectedProfileUser.level || 1).name})</span>
@@ -3200,6 +3208,48 @@ export default function App() {
                     }} />
                   </span>
                 </label>
+              </div>
+
+              {/* Spirit Animal Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1.25rem' }}>
+                <span className="text-secondary" style={{ fontSize: '0.8rem' }}>Spirit Animal Species (400+ choices)</span>
+                <select 
+                  value={user?.animal || ''}
+                  onChange={async (e) => {
+                    const selectedAnimal = e.target.value;
+                    try {
+                      const res = await fetch('/api/profile/settings', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ animal: selectedAnimal })
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || 'Failed to update spirit animal');
+                      setUser(data);
+                    } catch (err) {
+                      alert(err.message);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="">None Selected</option>
+                  {ANIMALS_LIST.map(anim => (
+                    <option key={anim} value={anim}>{anim}</option>
+                  ))}
+                </select>
               </div>
               
               {/* Privacy Mode Toggle */}
@@ -3560,7 +3610,7 @@ export default function App() {
               <X size={16} />
             </button>
             <h3 className="user-action-popup-title">
-              {activeUserPopup.nickname}
+              {activeUserPopup.nickname} {activeUserPopup.animal ? ' ' + activeUserPopup.animal.split(' ')[0] : ''}
             </h3>
             <div className="user-action-popup-list">
               <button className="user-action-popup-item" onClick={() => {
