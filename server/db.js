@@ -341,13 +341,10 @@ export const db = {
   getDmContacts: (userId) => {
     const data = readData();
     const contacts = new Set();
-    data.messages.forEach(m => {
+    // Reverse array to process newest messages first (places recently active chats at top)
+    const reversed = data.messages.slice().reverse();
+    reversed.forEach(m => {
       if (m.chatKey && m.chatKey.includes(userId)) {
-        // chatKey is "idA-idB" sorted — pick the other user
-        const parts = m.chatKey.split('-');
-        // parts can be 2 UUIDs separated by '-', but UUIDs contain '-' too
-        // chatKey was built as [userId1, userId2].sort().join('-')
-        // We identify contacts by senderId / recipientId fields
         if (m.senderId === userId && m.recipientId) contacts.add(m.recipientId);
         if (m.recipientId === userId && m.senderId) contacts.add(m.senderId);
       }

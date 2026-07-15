@@ -2120,7 +2120,7 @@ export default function App() {
                             {friendsDms.map(u => (
                               <div 
                                 key={u.id} 
-                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''} ${unreadCounts[u.id] > 0 ? 'unread-highlight' : ''}`}
                                 onClick={() => handleSelectChat(u, 'dm')}
                               >
                                 <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
@@ -2176,7 +2176,7 @@ export default function App() {
                             {notFriendsDms.map(u => (
                               <div 
                                 key={u.id} 
-                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''} ${unreadCounts[u.id] > 0 ? 'unread-highlight' : ''}`}
                                 onClick={() => handleSelectChat(u, 'dm')}
                               >
                                 <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
@@ -2232,7 +2232,7 @@ export default function App() {
                             {guestDms.map(u => (
                               <div 
                                 key={u.id} 
-                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''} ${unreadCounts[u.id] > 0 ? 'unread-highlight' : ''}`}
                                 onClick={() => handleSelectChat(u, 'dm')}
                               >
                                 <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
@@ -3429,7 +3429,25 @@ export default function App() {
             {getCombinedUsersWithStatus().map(u => {
               const isRoomAdmin = currentChat.admins?.includes(u.id) || currentChat.creatorId === u.id;
               return (
-                <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.6rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+                <div 
+                  key={u.id} 
+                  onClick={() => {
+                    if (u.id !== user?.id) {
+                      handleSelectChat(u, 'dm');
+                      setViewingRoomSettings(false);
+                    }
+                  }}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    padding: '0.4rem 0.6rem', 
+                    background: 'rgba(255,255,255,0.02)', 
+                    borderRadius: '8px',
+                    cursor: u.id === user?.id ? 'default' : 'pointer'
+                  }}
+                  title={u.id !== user?.id ? `Click to Chat / Send DM to ${u.nickname}` : ''}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
                     {/* Status dot: Green for online, Red for offline */}
                     <div 
@@ -3452,7 +3470,7 @@ export default function App() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }} onClick={(e) => e.stopPropagation()}>
                     {/* Promotion Button (Only admins/owners can promote other non-admins) */}
                     {(currentChat.admins?.includes(user?.id) || currentChat.creatorId === user?.id || currentChat.creatorId === 'system') && !isRoomAdmin && (
                       <button 
