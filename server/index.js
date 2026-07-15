@@ -291,6 +291,31 @@ app.post('/api/profile/avatar', authenticateToken, (req, res) => {
   res.json(user);
 });
 
+// Get specific user profile by ID
+app.get('/api/users/:userId', (req, res) => {
+  const targetUser = db.getUserById(req.params.userId);
+  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+  const { password, ...safeUser } = targetUser;
+  res.json(safeUser);
+});
+
+// Delete specific story from user profile
+app.delete('/api/profile/story/:storyId', authenticateToken, (req, res) => {
+  const user = db.getUserById(req.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const storyId = req.params.storyId;
+  const stories = user.stories ? user.stories.filter(s => s.id !== storyId) : [];
+
+  const updated = db.updateUser(req.user.id, { stories });
+  
+  // Notify sockets that user stories updated
+  io.emit('user-story-updated', { userId: user.id, stories: updated.stories });
+
+  const { password: _, ...userWithoutPassword } = updated;
+  res.json(userWithoutPassword);
+});
+
 // 10. Users: Fetch All Registered Users
 app.get('/api/users', (req, res) => {
   try {

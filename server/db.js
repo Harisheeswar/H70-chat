@@ -114,15 +114,33 @@ export function writeData(data) {
 }
 
 // Helper methods to modify database collections
+const autoCleanUserStories = (user, data) => {
+  if (!user || !user.stories) return;
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const fresh = user.stories.filter(s => new Date(s.createdAt) > oneDayAgo);
+  if (fresh.length !== user.stories.length) {
+    user.stories = fresh;
+    const idx = data.users.findIndex(u => u.id === user.id);
+    if (idx !== -1) {
+      data.users[idx].stories = fresh;
+      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+    }
+  }
+};
+
 export const db = {
   // Users
   getUserByEmail: (email) => {
     const data = readData();
-    return data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const user = data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (user) autoCleanUserStories(user, data);
+    return user;
   },
   getUserById: (id) => {
     const data = readData();
-    return data.users.find(u => u.id === id);
+    const user = data.users.find(u => u.id === id);
+    if (user) autoCleanUserStories(user, data);
+    return user;
   },
   createUser: (user) => {
     const data = readData();
@@ -162,6 +180,7 @@ export const db = {
   },
   getUsers: () => {
     const data = readData();
+    data.users.forEach(u => autoCleanUserStories(u, data));
     return data.users.map(({ password, ...u }) => u); // Return without password for safety
   },
 

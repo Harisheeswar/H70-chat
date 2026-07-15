@@ -744,6 +744,57 @@ export default function App() {
     }
   };
 
+  const handleUserClick = async (userId, nickname) => {
+    const onlineMatch = onlineUsers.find(u => u.id === userId);
+    if (onlineMatch) {
+      setActiveUserPopup(onlineMatch);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/users/${userId}`);
+      if (!res.ok) throw new Error('Not found');
+      const data = await res.json();
+      setActiveUserPopup(data);
+    } catch (e) {
+      setActiveUserPopup({
+        id: userId,
+        nickname: nickname || 'Member',
+        isOnline: false,
+        level: 1,
+        stories: []
+      });
+    }
+  };
+
+  const handleDeleteStory = async (storyId) => {
+    if (!window.confirm('Are you sure you want to delete this story?')) return;
+    try {
+      const res = await fetch(`/api/profile/story/${storyId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete story');
+      
+      setUser(prev => ({ ...prev, stories: data.stories }));
+      setSelectedProfileUser(prev => prev && prev.id === user?.id ? { ...prev, stories: data.stories } : prev);
+      
+      if (storiesViewer.stories.length <= 1) {
+        setStoriesViewer(null);
+      } else {
+        const nextStories = storiesViewer.stories.filter(s => s.id !== storyId);
+        const nextIndex = Math.min(storiesViewer.index, nextStories.length - 1);
+        setStoriesViewer(prev => ({
+          ...prev,
+          stories: nextStories,
+          index: nextIndex
+        }));
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   // Stranger Match (Random DM)
   const handleRandomChat = () => {
     const candidates = onlineUsers.filter(u => u.id !== user?.id && u.role !== 'supervisor');
@@ -2074,11 +2125,7 @@ export default function App() {
                         <div 
                           className="avatar-circle" 
                           style={{ width: '32px', height: '32px', fontSize: '0.8rem', cursor: 'pointer', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-                          onClick={() => {
-                            if (sender) {
-                              setActiveUserPopup(sender);
-                            }
-                          }}
+                          onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
                         >
                           {sender?.avatar ? (
                             <img src={sender.avatar} alt={msg.senderNickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -2095,11 +2142,7 @@ export default function App() {
                             <span 
                               className="message-sender-name"
                               style={{ cursor: 'pointer' }}
-                              onClick={() => {
-                                if (sender) {
-                                  setActiveUserPopup(sender);
-                                }
-                              }}
+                              onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
                             >
                               {msg.senderNickname}
                             </span>
@@ -2775,79 +2818,92 @@ export default function App() {
             )}
           </div>
 
-          {/* Stories list */}
-          {((selectedProfileUser.stories && selectedProfileUser.stories.length > 0) || (selectedProfileUser.id === user?.id && token) || (selectedProfileUser.id !== user?.id)) && (
-            <div className="bio-section">
-              <div className="bio-title">Stories Feed</div>
-              <div className="stories-list-horizontal">
-                {/* Allow current user to post a story */}
-                {selectedProfileUser.id === user?.id && token && (
-                  <div className="btn-add-story" onClick={() => setIsAddingStory(true)} title="Add to Story">
-                    <Plus size={20} />
-                    <span style={{ fontSize: '0.6rem', marginTop: '2px', fontWeight: 600 }}>Post</span>
+          {/* Stories and Bio with Privacy Check */}
+          {selectedProfileUser.id !== user?.id && selectedProfileUser.privacyMode === 'private' && getFriendshipState(selectedProfileUser) !== 'friends' ? (
+            <div className="private-profile-notice" style={{ textAlign: 'center', padding: '1.75rem 1.25rem', background: 'var(--bg-tertiary)', borderRadius: '16px', border: '1px dashed var(--border-color)', margin: '1.25rem 0' }}>
+              <div style={{ fontSize: '1.75rem', marginBottom: '0.75rem' }}>🔒</div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>This Account is Private</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: 1.4 }}>
+                Add them as a friend to view their biography and stories feed.
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Stories list */}
+              {((selectedProfileUser.stories && selectedProfileUser.stories.length > 0) || (selectedProfileUser.id === user?.id && token) || (selectedProfileUser.id !== user?.id)) && (
+                <div className="bio-section">
+                  <div className="bio-title">Stories Feed</div>
+                  <div className="stories-list-horizontal">
+                    {/* Allow current user to post a story */}
+                    {selectedProfileUser.id === user?.id && token && (
+                      <div className="btn-add-story" onClick={() => setIsAddingStory(true)} title="Add to Story">
+                        <Plus size={20} />
+                        <span style={{ fontSize: '0.6rem', marginTop: '2px', fontWeight: 600 }}>Post</span>
+                      </div>
+                    )}
+                    
+                    {/* Show list of active stories */}
+                    {selectedProfileUser.stories && selectedProfileUser.stories.length > 0 ? (
+                      <div 
+                        className="story-circle" 
+                        onClick={() => setStoriesViewer({ 
+                          userId: selectedProfileUser.id, 
+                          stories: selectedProfileUser.stories, 
+                          index: 0 
+                        })}
+                      >
+                        <div className="story-avatar-inner">
+                          👁️ View
+                        </div>
+                      </div>
+                    ) : (
+                      selectedProfileUser.id !== user?.id && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                          No stories posted
+                        </div>
+                      )
+                    )}
                   </div>
-                )}
-                
-                {/* Show list of active stories */}
-                {selectedProfileUser.stories && selectedProfileUser.stories.length > 0 ? (
-                  <div 
-                    className="story-circle" 
-                    onClick={() => setStoriesViewer({ 
-                      userId: selectedProfileUser.id, 
-                      stories: selectedProfileUser.stories, 
-                      index: 0 
-                    })}
-                  >
-                    <div className="story-avatar-inner">
-                      👁️ View
+                </div>
+              )}
+
+              <div className="bio-section">
+                <div className="bio-title">User Bio</div>
+                {isBioEditing ? (
+                  <div>
+                    <textarea 
+                      className="bio-textarea"
+                      value={bioInput}
+                      onChange={(e) => setBioInput(e.target.value)}
+                      maxLength={160}
+                    />
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsBioEditing(false)}>Cancel</button>
+                      <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleUpdateBio}>Save</button>
                     </div>
                   </div>
                 ) : (
-                  selectedProfileUser.id !== user?.id && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                      No stories posted
+                  <div>
+                    <div className="bio-text">
+                      {selectedProfileUser.bio || 'This user is mysterious and has not set a bio yet.'}
                     </div>
-                  )
+                    {selectedProfileUser.id === user?.id && token && (
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ width: '100%', marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.85rem' }} 
+                        onClick={() => {
+                          setBioInput(user.bio || '');
+                          setIsBioEditing(true);
+                        }}
+                      >
+                        <Edit size={14} /> Edit Bio
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-            </div>
+            </>
           )}
-
-          <div className="bio-section">
-            <div className="bio-title">User Bio</div>
-            {isBioEditing ? (
-              <div>
-                <textarea 
-                  className="bio-textarea"
-                  value={bioInput}
-                  onChange={(e) => setBioInput(e.target.value)}
-                  maxLength={160}
-                />
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsBioEditing(false)}>Cancel</button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleUpdateBio}>Save</button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="bio-text">
-                  {selectedProfileUser.bio || 'This user is mysterious and has not set a bio yet.'}
-                </div>
-                {selectedProfileUser.id === user?.id && token && (
-                  <button 
-                    className="btn btn-secondary" 
-                    style={{ width: '100%', marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.85rem' }} 
-                    onClick={() => {
-                      setBioInput(user.bio || '');
-                      setIsBioEditing(true);
-                    }}
-                  >
-                    <Edit size={14} /> Edit Bio
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
 
           {/* Settings Panel for Current User profile card */}
           {selectedProfileUser.id === user?.id && token && (
@@ -2986,7 +3042,7 @@ export default function App() {
                   btnText = 'Friends (Click to Unfriend)';
                   btnClass = 'btn-secondary';
                 } else if (state === 'sent') {
-                  btnText = 'Request Pending (Cancel)';
+                  btnText = 'Request Sent (Cancel)';
                   btnClass = 'btn-secondary';
                 } else if (state === 'received') {
                   btnText = 'Accept Friend Request';
@@ -3067,17 +3123,27 @@ export default function App() {
                 </button>
               )}
 
-              <button 
-                className="btn btn-primary" 
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                onClick={() => {
-                  handleSelectChat(selectedProfileUser, 'dm');
-                  setActiveTab('dms');
-                  setSelectedProfileUser(null);
-                }}
-              >
-                <MessageSquare size={16} /> Send Direct Message
-              </button>
+              {selectedProfileUser.id !== user?.id && selectedProfileUser.privacyMode === 'private' && getFriendshipState(selectedProfileUser) !== 'friends' ? (
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', opacity: 0.5, cursor: 'not-allowed' }}
+                  disabled
+                >
+                  <MessageSquare size={16} /> Private Account (Add Friend to DM)
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  onClick={() => {
+                    handleSelectChat(selectedProfileUser, 'dm');
+                    setActiveTab('dms');
+                    setSelectedProfileUser(null);
+                  }}
+                >
+                  <MessageSquare size={16} /> Send Direct Message
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -3214,14 +3280,20 @@ export default function App() {
               </button>
               
               {activeUserPopup.id !== user?.id && (
-                <button className="user-action-popup-item" onClick={() => {
-                  handleSelectChat(activeUserPopup, 'dm');
-                  setCurrentNav('chat');
-                  setActiveTab('dms');
-                  setActiveUserPopup(null);
-                }}>
-                  <MessageSquare size={16} style={{ color: '#4b5563' }} /> Private Message
-                </button>
+                activeUserPopup.privacyMode === 'private' && getFriendshipState(activeUserPopup) !== 'friends' ? (
+                  <button className="user-action-popup-item" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                    <MessageSquare size={16} style={{ color: '#9ca3af' }} /> Private (Add Friend to DM)
+                  </button>
+                ) : (
+                  <button className="user-action-popup-item" onClick={() => {
+                    handleSelectChat(activeUserPopup, 'dm');
+                    setCurrentNav('chat');
+                    setActiveTab('dms');
+                    setActiveUserPopup(null);
+                  }}>
+                    <MessageSquare size={16} style={{ color: '#4b5563' }} /> Private Message
+                  </button>
+                )
               )}
 
               {token && activeUserPopup.id !== user?.id && (() => {
@@ -3373,13 +3445,25 @@ export default function App() {
                   </div>
                 </div>
               </div>
-              <button 
-                className="input-icon-btn" 
-                onClick={() => setStoriesViewer(null)}
-                style={{ background: 'rgba(0,0,0,0.4)', color: 'white' }}
-              >
-                <X size={16} />
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {storiesViewer.userId === user?.id && (
+                  <button 
+                    className="input-icon-btn" 
+                    onClick={() => handleDeleteStory(storiesViewer.stories[storiesViewer.index].id)}
+                    style={{ background: 'rgba(239,68,68,0.4)', color: 'white' }}
+                    title="Delete Story"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                <button 
+                  className="input-icon-btn" 
+                  onClick={() => setStoriesViewer(null)}
+                  style={{ background: 'rgba(0,0,0,0.4)', color: 'white' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             {/* Story contents */}
