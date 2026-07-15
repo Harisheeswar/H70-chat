@@ -1464,7 +1464,7 @@ export default function App() {
 
   // 2. Chat Dashboard layout
   return (
-    <div className={`app-layout ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
+    <div className={`app-layout ${mobileMenuOpen ? 'mobile-menu-open' : ''} ${currentNav === 'chat' && !currentChat ? 'chat-list-view' : ''}`}>
       {/* Mobile backdrop overlay - tap to close menu */}
       {mobileMenuOpen && (
         <div 
@@ -1531,7 +1531,14 @@ export default function App() {
 
       {/* COLUMN 2: Middle List Sidebar (Guidelines, Channels list, Friends list) */}
       <div className="sidebar">
-        <div className="sidebar-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+        <div className="sidebar-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <button 
+            className="mobile-menu-btn" 
+            onClick={() => setMobileMenuOpen(true)}
+            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', display: 'none', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Menu size={22} />
+          </button>
           <div className="app-brand" style={{ fontSize: '1.05rem', letterSpacing: '0.5px' }}>
             {currentNav === 'home' && 'Guidelines'}
             {currentNav === 'chat' && 'Active Channels'}
