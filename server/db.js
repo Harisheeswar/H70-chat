@@ -1,10 +1,74 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { MongoClient } from 'mongodb';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DB_FILE = path.join(__dirname, 'db.json');
+
+const MONGODB_URI = process.env.MONGODB_URI;
+let mongoClient = null;
+let mongoCollection = null;
+let isConnected = false;
+
+// Connect to MongoDB and pull state
+export async function connectMongo() {
+  if (!MONGODB_URI) {
+    console.log('MONGODB_URI not set. Operating in local-only file database mode.');
+    return;
+  }
+  try {
+    console.log('Connecting to MongoDB Atlas...');
+    mongoClient = new MongoClient(MONGODB_URI);
+    await mongoClient.connect();
+    const dbName = mongoClient.s.options.dbName || 'h70_chat';
+    const database = mongoClient.db(dbName);
+    mongoCollection = database.collection('db_state');
+    isConnected = true;
+    console.log('Connected to MongoDB Atlas successfully.');
+    
+    await pullFromMongo();
+  } catch (err) {
+    console.error('Failed to connect to MongoDB, using local file storage:', err.message);
+  }
+}
+
+// Pull state from MongoDB to local file
+async function pullFromMongo() {
+  if (!isConnected || !mongoCollection) return;
+  try {
+    const doc = await mongoCollection.findOne({ _id: 'h70_state' });
+    if (doc && doc.data) {
+      console.log('Pulled latest database state from MongoDB.');
+      fs.writeFileSync(DB_FILE, JSON.stringify(doc.data, null, 2), 'utf8');
+    } else {
+      console.log('No existing state found in MongoDB. Initializing with local data.');
+      const localData = readData();
+      await mongoCollection.updateOne(
+        { _id: 'h70_state' },
+        { $set: { data: localData } },
+        { upsert: true }
+      );
+    }
+  } catch (err) {
+    console.error('Failed to pull data from MongoDB:', err.message);
+  }
+}
+
+// Push state to MongoDB (asynchronous, non-blocking)
+async function pushToMongo(data) {
+  if (!isConnected || !mongoCollection) return;
+  try {
+    await mongoCollection.updateOne(
+      { _id: 'h70_state' },
+      { $set: { data } },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error('Failed to push data to MongoDB:', err.message);
+  }
+}
 
 // Initialize database with default structure if it does not exist
 function initDb() {
@@ -36,6 +100,9 @@ export function readData() {
 export function writeData(data) {
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+    if (isConnected) {
+      pushToMongo(data);
+    }
     return true;
   } catch (error) {
     console.error('Error writing database file', error);

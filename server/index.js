@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import { db } from './db.js';
+import { db, connectMongo } from './db.js';
 
 dotenv.config();
 
@@ -999,6 +999,7 @@ app.get('*', (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
+  await connectMongo();
   console.log(`H70 Chat Server listening on port ${PORT}`);
 });
