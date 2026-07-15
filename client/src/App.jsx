@@ -4,7 +4,7 @@ import {
   MessageSquare, Users, User, Plus, Send, Image, Mic, Square, Trash2, 
   Video, Phone, PhoneOff, MicOff, VideoOff, Edit, X, Compass, Award, 
   BookOpen, LogOut, CheckCircle, Mail, Key, ShieldAlert,
-  Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu
+  Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu, Gamepad2
 } from 'lucide-react';
 
 // Level Tiers Helper
@@ -71,7 +71,8 @@ export default function App() {
   const [isEmojiOpen, setIsEmojiOpen] = useState(false);
   const [roomSearchInput, setRoomSearchInput] = useState('');
   const [theme, setTheme] = useState(localStorage.getItem('h70_theme') || 'dark');
-
+  const [typingUsers, setTypingUsers] = useState([]);
+  const isTypingRef = useRef(false);
   // Voice Message States
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -112,6 +113,11 @@ export default function App() {
   const currentChatRef = useRef(currentChat);
   useEffect(() => {
     currentChatRef.current = currentChat;
+  }, [currentChat]);
+
+  useEffect(() => {
+    setTypingUsers([]);
+    isTypingRef.current = false;
   }, [currentChat]);
 
   useEffect(() => {
@@ -492,6 +498,17 @@ export default function App() {
       });
     });
 
+    socket.on('user-typing-state', ({ userId, isTyping }) => {
+      setTypingUsers(prev => {
+        if (isTyping) {
+          if (prev.includes(userId)) return prev;
+          return [...prev, userId];
+        } else {
+          return prev.filter(id => id !== userId);
+        }
+      });
+    });
+
     // Level & XP update events
     socket.on('stats-updated', ({ xp, level }) => {
       setUser(prev => {
@@ -752,6 +769,10 @@ export default function App() {
       setCurrentChat({ type: 'dm', id: item.id, nickname: item.nickname });
       setMessages([]);
       setUnreadCounts(prev => ({ ...prev, [item.id]: 0 }));
+      
+      const chatKey = [user?.id, item.id].sort().join('-');
+      socketRef.current?.emit('mark-message-read', { chatKey });
+
       socketRef.current?.emit('get-direct-history', { recipientId: item.id });
     }
   };
@@ -844,8 +865,116 @@ export default function App() {
         type: 'text',
         content: msgText.trim()
       });
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        socketRef.current?.emit('dm-typing', { recipientId: currentChat.id, isTyping: false });
+      }
     }
     setMsgText('');
+  };
+
+  const handleTypingChange = (text) => {
+    setMsgText(text);
+    if (currentChat && currentChat.type === 'dm') {
+      const currentlyTyping = text.trim().length > 0;
+      if (isTypingRef.current !== currentlyTyping) {
+        isTypingRef.current = currentlyTyping;
+        socketRef.current?.emit('dm-typing', { recipientId: currentChat.id, isTyping: currentlyTyping });
+      }
+    }
+  };
+
+  const handleStartGame = () => {
+    const gameState = {
+      board: Array(9).fill(null),
+      turn: 'X',
+      xUserId: user?.id,
+      oUserId: currentChat?.id,
+      status: 'active'
+    };
+    
+    const chatKey = [user?.id, currentChat?.id].sort().join('-');
+    const newMsg = {
+      id: 'msg_' + Math.random().toString(36).substring(2, 9),
+      senderId: user?.id,
+      senderNickname: user?.nickname,
+      recipientId: currentChat?.id,
+      chatKey,
+      type: 'game_init',
+      content: JSON.stringify(gameState),
+      timestamp: new Date().toISOString()
+    };
+    
+    socketRef.current?.emit('send-direct-message', newMsg);
+    setMessages(prev => [...prev, newMsg]);
+  };
+
+  const handleGameMove = (msg, cellIndex) => {
+    const WINNING_LINES = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6]
+    ];
+    
+    const checkWinner = (board) => {
+      for (let line of WINNING_LINES) {
+        const [a, b, c] = line;
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+          return board[a];
+        }
+      }
+      if (board.every(cell => cell !== null)) return 'draw';
+      return null;
+    };
+
+    let gameState;
+    try {
+      gameState = JSON.parse(msg.content);
+    } catch (e) {
+      return;
+    }
+    
+    const isXTurn = gameState.turn === 'X';
+    const currentTurnUserId = isXTurn ? gameState.xUserId : gameState.oUserId;
+    if (currentTurnUserId !== user?.id) {
+      alert("It's not your turn!");
+      return;
+    }
+    
+    const newBoard = [...gameState.board];
+    newBoard[cellIndex] = gameState.turn;
+    
+    const winner = checkWinner(newBoard);
+    let newStatus = 'active';
+    if (winner === 'draw') {
+      newStatus = 'draw';
+    } else if (winner) {
+      newStatus = 'won';
+    }
+    
+    const updatedState = {
+      board: newBoard,
+      turn: isXTurn ? 'O' : 'X',
+      xUserId: gameState.xUserId,
+      oUserId: gameState.oUserId,
+      status: newStatus,
+      winner: winner
+    };
+    
+    const chatKey = [user?.id, currentChat?.id].sort().join('-');
+    const newMsg = {
+      id: 'msg_' + Math.random().toString(36).substring(2, 9),
+      senderId: user?.id,
+      senderNickname: user?.nickname,
+      recipientId: currentChat?.id,
+      chatKey,
+      type: 'game_init',
+      content: JSON.stringify(updatedState),
+      timestamp: new Date().toISOString()
+    };
+    
+    socketRef.current?.emit('send-direct-message', newMsg);
+    setMessages(prev => [...prev, newMsg]);
   };
 
   // Image Upload trigger
@@ -2175,22 +2304,90 @@ export default function App() {
                           </div>
                         )}
 
-                        <div className="message-bubble">
-                          {displayMediaType === 'image' && (
-                            <img 
-                              src={displayMediaUrl} 
-                              alt="Shared media" 
-                              className="message-media-preview"
-                              onClick={() => setLightboxImage(displayMediaUrl)}
-                              style={{ cursor: 'pointer', maxWidth: '240px', borderRadius: '8px', marginBottom: '0.4rem' }}
-                            />
+                        <div className="message-bubble" style={msg.type === 'game_init' ? { background: 'transparent', padding: 0, border: 'none', boxShadow: 'none' } : {}}>
+                          {msg.type === 'game_init' ? (() => {
+                            let gameState;
+                            try {
+                              gameState = JSON.parse(msg.content);
+                            } catch (e) {
+                              return <div className="message-bubble">Invalid game state</div>;
+                            }
+                            
+                            const isMyTurn = (gameState.turn === 'X' ? gameState.xUserId : gameState.oUserId) === user?.id;
+                            const isPlayer = gameState.xUserId === user?.id || gameState.oUserId === user?.id;
+                            const isLastMessage = i === messages.length - 1;
+
+                            return (
+                              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '12px', minWidth: '220px', maxWidth: '280px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                                  <span style={{ fontSize: '1.1rem' }}>🎮</span>
+                                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Tic-Tac-Toe Duel</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem', background: 'rgba(0,0,0,0.15)', padding: '0.4rem', borderRadius: '8px' }}>
+                                  {gameState.board.map((cell, cellIdx) => (
+                                    <div 
+                                      key={cellIdx}
+                                      onClick={() => {
+                                        if (gameState.status === 'active' && isPlayer && isMyTurn && isLastMessage && cell === null) {
+                                          handleGameMove(msg, cellIdx);
+                                        }
+                                      }}
+                                      style={{
+                                        height: '48px',
+                                        background: cell ? 'var(--bg-secondary)' : 'rgba(255,255,255,0.02)',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '6px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '1.4rem',
+                                        fontWeight: 800,
+                                        color: cell === 'X' ? 'var(--bg-accent-teal)' : 'var(--bg-accent)',
+                                        cursor: (gameState.status === 'active' && isPlayer && isMyTurn && isLastMessage && cell === null) ? 'pointer' : 'default',
+                                        transition: 'all 0.15s'
+                                      }}
+                                      className={(gameState.status === 'active' && isPlayer && isMyTurn && isLastMessage && cell === null) ? 'game-cell-hover' : ''}
+                                    >
+                                      {cell}
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', textAlign: 'center', fontWeight: 600 }}>
+                                  {gameState.status === 'active' ? (
+                                    isMyTurn ? (
+                                      <span style={{ color: 'var(--bg-accent-teal)' }}>⚡ Your Turn ({gameState.turn})</span>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-muted)' }}>Waiting for opponent ({gameState.turn})...</span>
+                                    )
+                                  ) : gameState.status === 'draw' ? (
+                                    <span style={{ color: 'var(--text-secondary)' }}>🤝 Game Drawn!</span>
+                                  ) : (
+                                    <span style={{ color: 'var(--success)' }}>
+                                      🎉 {gameState.winner === 'X' ? (gameState.xUserId === user?.id ? 'You won!' : 'Opponent won!') : (gameState.oUserId === user?.id ? 'You won!' : 'Opponent won!')}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })() : (
+                            <>
+                              {displayMediaType === 'image' && (
+                                <img 
+                                  src={displayMediaUrl} 
+                                  alt="Shared media" 
+                                  className="message-media-preview"
+                                  onClick={() => setLightboxImage(displayMediaUrl)}
+                                  style={{ cursor: 'pointer', maxWidth: '240px', borderRadius: '8px', marginBottom: '0.4rem' }}
+                                />
+                              )}
+                              {displayMediaType === 'audio' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '180px', padding: '0.25rem 0' }}>
+                                  <audio src={displayMediaUrl} controls style={{ height: '36px', maxWidth: '220px' }} />
+                                </div>
+                              )}
+                              {displayText && <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{displayText}</div>}
+                            </>
                           )}
-                          {displayMediaType === 'audio' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '180px', padding: '0.25rem 0' }}>
-                              <audio src={displayMediaUrl} controls style={{ height: '36px', maxWidth: '220px' }} />
-                            </div>
-                          )}
-                          {displayText && <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{displayText}</div>}
                           
                           {/* Message tick receipts */}
                           {isOutgoing && currentChat.type === 'dm' && (
@@ -2246,6 +2443,16 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Typing indicator banner */}
+              {currentChat.type === 'dm' && typingUsers.includes(currentChat.id) && (
+                <div style={{ padding: '0.25rem 1rem', fontSize: '0.75rem', color: 'var(--bg-accent-teal)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div className="typing-dot" style={{ animationDelay: '0s' }}>.</div>
+                  <div className="typing-dot" style={{ animationDelay: '0.2s' }}>.</div>
+                  <div className="typing-dot" style={{ animationDelay: '0.4s' }}>.</div>
+                  <span style={{ marginLeft: '4px' }}>{currentChat.nickname} is typing...</span>
                 </div>
               )}
 
@@ -2338,11 +2545,19 @@ export default function App() {
                         )}
                       </div>
 
+                      {/* Tic Tac Toe game trigger */}
+                      {currentChat.type === 'dm' && token && (
+                        <button className="input-icon-btn" onClick={handleStartGame} title="Play Tic-Tac-Toe Duel">
+                          <Gamepad2 size={20} />
+                        </button>
+                      )}
+
                       <input 
+
                         type="text" 
                         className="chat-text-input" 
                         value={msgText} 
-                        onChange={(e) => setMsgText(e.target.value)} 
+                        onChange={(e) => handleTypingChange(e.target.value)} 
                         onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                         placeholder="Type a message or share files..." 
                       />

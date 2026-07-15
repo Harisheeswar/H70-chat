@@ -768,6 +768,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Typing state indicators
+  socket.on('dm-typing', ({ recipientId, isTyping }) => {
+    const user = activeSockets.get(socket.id);
+    if (!user) return;
+    const recipientSocketId = activeUsers.get(recipientId);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('user-typing-state', { userId: user.id, isTyping });
+    }
+  });
+
   // ----------------------------------------------------
   // WEBRTC SIGNALING (1-ON-1 CALLS & ROOM CALLS)
   // ----------------------------------------------------

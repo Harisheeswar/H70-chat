@@ -2228,3 +2228,23 @@ input, button, textarea {
     display: flex !important;
   }
 }
+
+/* Tic-Tac-Toe Game styling & typing dot animations */
+.game-cell-hover:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  transform: scale(1.05);
+}
+
+@keyframes typing-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.typing-dot {
+  animation: typing-bounce 1s infinite ease-in-out;
+  display: inline-block;
+}
