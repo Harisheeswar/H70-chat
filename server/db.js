@@ -20,7 +20,10 @@ export async function connectMongo() {
   }
   try {
     console.log('Connecting to MongoDB Atlas...');
-    mongoClient = new MongoClient(MONGODB_URI);
+    mongoClient = new MongoClient(MONGODB_URI, {
+      connectTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 5000
+    });
     await mongoClient.connect();
     const dbName = mongoClient.s.options.dbName || 'h70_chat';
     const database = mongoClient.db(dbName);
