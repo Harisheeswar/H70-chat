@@ -156,6 +156,17 @@ export default function App() {
     onlineUsersRef.current = onlineUsers;
   }, [onlineUsers]);
 
+  const playAlertSound = () => {
+    if (userRef.current?.notificationsEnabled === false) return;
+    try {
+      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav');
+      audio.volume = (userRef.current?.soundLevel || 80) / 100;
+      audio.play();
+    } catch (e) {
+      console.error('Failed to play alert sound:', e);
+    }
+  };
+
   const isPopStateRef = useRef(false);
 
   // Sync state with browser history (popstate / back button)
@@ -458,21 +469,32 @@ export default function App() {
           [msg.roomId]: (prev[msg.roomId] || 0) + 1
         }));
 
-        // Notification Toast for Joined Rooms
-        let isJoined = false;
+        // Mute Room Check
+        let isMuted = false;
         try {
-          const joinedStr = localStorage.getItem('h70_joined_rooms');
-          const joinedList = joinedStr ? JSON.parse(joinedStr) : [];
-          isJoined = joinedList.includes(msg.roomId);
+          const mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
+          isMuted = mutedList.includes(msg.roomId);
         } catch (e) {}
 
-        if (isJoined) {
-          const room = roomsRef.current.find(r => r.id === msg.roomId);
-          if (room) {
-            setActiveToast({
-              title: `# ${room.name}`,
-              content: `${msg.senderNickname}: ${msg.type === 'text' ? msg.content : '📷 Shared media'}`
-            });
+        if (!isMuted) {
+          playAlertSound();
+
+          // Notification Toast for Joined Rooms
+          let isJoined = false;
+          try {
+            const joinedStr = localStorage.getItem('h70_joined_rooms');
+            const joinedList = joinedStr ? JSON.parse(joinedStr) : [];
+            isJoined = joinedList.includes(msg.roomId);
+          } catch (e) {}
+
+          if (isJoined) {
+            const room = roomsRef.current.find(r => r.id === msg.roomId);
+            if (room) {
+              setActiveToast({
+                title: `# ${room.name}`,
+                content: `${msg.senderNickname}: ${msg.type === 'text' ? msg.content : '📷 Shared media'}`
+              });
+            }
           }
         }
       }
@@ -497,6 +519,7 @@ export default function App() {
             ...prev,
             [msg.senderId]: (prev[msg.senderId] || 0) + 1
           }));
+          playAlertSound();
         }
       }
     });
@@ -2060,33 +2083,58 @@ export default function App() {
                     <Search size={14} style={{ position: 'absolute', right: '14px', top: '10px', opacity: 0.5 }} />
                   </div>
 
-                  {rooms.filter(r => r.name.toLowerCase().includes(roomSearchInput.toLowerCase())).map(room => (
-                    <div 
-                       key={room.id} 
-                       className={`list-item ${currentChat?.type === 'room' && currentChat.id === room.id ? 'active' : ''}`}
-                       onClick={() => handleSelectChat(room, 'room')}
-                     >
-                       {room.avatar ? (
-                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                           <img src={room.avatar} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                         </div>
-                       ) : (
-                         <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                           #
-                         </div>
-                       )}
-                       <div className="list-item-info">
-                        <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                          <span>{room.name}</span>
-                          {roomUnreadCounts[room.id] > 0 && (
-                            <span className="room-unread-badge" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
-                              {roomUnreadCounts[room.id]}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  {(() => {
+                    let joinedList = [];
+                    try {
+                      joinedList = JSON.parse(localStorage.getItem('h70_joined_rooms') || '[]');
+                    } catch (e) {}
+
+                    let mutedList = [];
+                    try {
+                      mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
+                    } catch (e) {}
+
+                    return rooms
+                      .filter(r => {
+                        const isDefault = r.id === 'general' || r.id === 'tech' || r.id === 'gaming';
+                        const isJoined = joinedList.includes(r.id);
+                        const matchesSearch = r.name.toLowerCase().includes(roomSearchInput.toLowerCase());
+                        return (isDefault || isJoined) && matchesSearch;
+                      })
+                      .map(room => {
+                        const isMuted = mutedList.includes(room.id);
+                        return (
+                          <div 
+                             key={room.id} 
+                             className={`list-item ${currentChat?.type === 'room' && currentChat.id === room.id ? 'active' : ''}`}
+                             onClick={() => handleSelectChat(room, 'room')}
+                           >
+                             {room.avatar ? (
+                               <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                 <img src={room.avatar} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                               </div>
+                             ) : (
+                               <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                 #
+                               </div>
+                             )}
+                             <div className="list-item-info">
+                              <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  {room.name}
+                                  {isMuted && <span title="Room muted" style={{ fontSize: '0.75rem', opacity: 0.65 }}>🔇</span>}
+                                </span>
+                                {roomUnreadCounts[room.id] > 0 && (
+                                  <span className="room-unread-badge" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
+                                    {roomUnreadCounts[room.id]}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                  })()}
                 </div>
               )}
 
@@ -3512,9 +3560,93 @@ export default function App() {
             )}
           </div>
 
-          {/* Delete Room Button (Supervisor or Owner only, cannot delete default lounges) */}
-          {(user?.role === 'supervisor' || currentChat.creatorId === user?.id) && currentChat.id !== 'general' && currentChat.id !== 'tech' && currentChat.id !== 'gaming' && (
-            <div style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', marginTop: 'auto' }}>
+          {/* Mute Room Notifications Toggle */}
+          <div style={{ padding: '1rem 0', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Mute Room Notifications</span>
+            <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '40px', height: '20px' }}>
+              <input 
+                type="checkbox" 
+                checked={(() => {
+                  try {
+                    const mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
+                    return mutedList.includes(currentChat.id);
+                  } catch (e) {
+                    return false;
+                  }
+                })()}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  let mutedList = [];
+                  try {
+                    mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
+                  } catch (err) {}
+                  if (checked) {
+                    if (!mutedList.includes(currentChat.id)) mutedList.push(currentChat.id);
+                  } else {
+                    mutedList = mutedList.filter(id => id !== currentChat.id);
+                  }
+                  localStorage.setItem('h70_muted_rooms', JSON.stringify(mutedList));
+                  // Force state refresh
+                  setRooms(prev => [...prev]);
+                }}
+                style={{ opacity: 0, width: 0, height: 0 }}
+              />
+              <span className="slider round" style={{
+                position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: (() => {
+                  try {
+                    const mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
+                    return mutedList.includes(currentChat.id) ? 'var(--bg-accent-teal)' : '#333';
+                  } catch (e) {
+                    return '#333';
+                  }
+                })(),
+                transition: '.3s', borderRadius: '20px'
+              }}>
+                <span style={{
+                  position: 'absolute', content: '""', height: '14px', width: '14px', 
+                  left: (() => {
+                    try {
+                      const mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
+                      return mutedList.includes(currentChat.id) ? '22px' : '4px';
+                    } catch (e) {
+                      return '4px';
+                    }
+                  })(), 
+                  bottom: '3px',
+                  backgroundColor: 'white', transition: '.3s', borderRadius: '50%'
+                }} />
+              </span>
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '1rem 0', borderTop: '1px solid var(--border-color)', marginTop: 'auto' }}>
+            {/* Leave Room Button (Can leave joined rooms. Creator should delete rather than leave, or they can leave too if they want) */}
+            {currentChat.id !== 'general' && currentChat.id !== 'tech' && currentChat.id !== 'gaming' && (
+              <button 
+                className="btn btn-secondary" 
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem' }}
+                onClick={() => {
+                  if (window.confirm(`Are you sure you want to leave ${currentChat.name}?`)) {
+                    let joinedList = [];
+                    try {
+                      joinedList = JSON.parse(localStorage.getItem('h70_joined_rooms') || '[]');
+                    } catch (e) {}
+                    const updatedList = joinedList.filter(id => id !== currentChat.id);
+                    localStorage.setItem('h70_joined_rooms', JSON.stringify(updatedList));
+                    
+                    socketRef.current?.emit('leave-room', currentChat.id);
+                    setCurrentChat(null);
+                    setViewingRoomSettings(false);
+                  }
+                }}
+              >
+                🚪 Leave Room
+              </button>
+            )}
+
+            {/* Delete Room Button (Supervisor or Owner only, cannot delete default lounges) */}
+            {(user?.role === 'supervisor' || currentChat.creatorId === user?.id) && currentChat.id !== 'general' && currentChat.id !== 'tech' && currentChat.id !== 'gaming' && (
               <button 
                 className="btn btn-danger" 
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem' }}
@@ -3527,8 +3659,8 @@ export default function App() {
               >
                 <Trash2 size={16} /> Delete Room
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
