@@ -453,6 +453,16 @@ app.post('/api/profile/settings', authenticateToken, (req, res) => {
   res.json(userWithoutPassword);
 });
 
+// 15.5. Clear Direct Messages
+app.post('/api/messages/clear', authenticateToken, (req, res) => {
+  const { recipientId } = req.body;
+  if (!recipientId) return res.status(400).json({ error: 'recipientId is required' });
+  const chatKey = [req.user.id, recipientId].sort().join('-');
+  
+  db.clearMessages(chatKey);
+  res.json({ success: true });
+});
+
 // ----------------------------------------------------
 // SOCKET.IO REAL-TIME LOGIC
 // ----------------------------------------------------
@@ -530,7 +540,7 @@ io.on('connection', (socket) => {
       user: userDetails, 
       rooms: db.getRooms(),
       unreadCounts: db.getUnreadDmCounts(userDetails.id),
-      dmContacts: userDetails.isGuest ? [] : db.getDmContacts(userDetails.id)
+      dmContacts: userDetails.isGuest ? [] : getDmContactsWithProfiles(userDetails.id)
     });
   });
 
@@ -557,7 +567,7 @@ io.on('connection', (socket) => {
   socket.on('get-dm-contacts', () => {
     const user = activeSockets.get(socket.id);
     if (!user || user.isGuest) return socket.emit('dm-contacts', []);
-    const contacts = db.getDmContacts(user.id);
+    const contacts = getDmContactsWithProfiles(user.id);
     socket.emit('dm-contacts', contacts);
   });
 
@@ -738,9 +748,9 @@ io.on('connection', (socket) => {
     }
 
     // Update dm-contacts for both parties so DM list updates live
-    socket.emit('dm-contacts', db.getDmContacts(user.id));
+    socket.emit('dm-contacts', getDmContactsWithProfiles(user.id));
     if (recipientSocketId) {
-      io.to(recipientSocketId).emit('dm-contacts', db.getDmContacts(recipientId));
+      io.to(recipientSocketId).emit('dm-contacts', getDmContactsWithProfiles(recipientId));
     }
   });
 
@@ -979,6 +989,35 @@ io.on('connection', (socket) => {
 
       socket.emit('online-users', users);
     }
+  }
+
+  function getDmContactsWithProfiles(userId) {
+    const contactIds = db.getDmContacts(userId);
+    return contactIds.map(id => {
+      const profile = db.getUserById(id);
+      if (profile) {
+        return {
+          id: profile.id,
+          nickname: profile.nickname,
+          avatar: profile.avatar || null,
+          level: profile.level || 1,
+          animal: profile.animal || null,
+          bio: profile.bio || '',
+          isOnline: activeUsers.has(profile.id),
+          lastSeen: profile.lastSeen || null
+        };
+      }
+      return {
+        id: id,
+        nickname: id.startsWith('guest_') ? ('GUEST_' + id.substring(6, 12).toUpperCase()) : 'Member',
+        avatar: null,
+        level: 1,
+        animal: null,
+        bio: '',
+        isOnline: activeUsers.has(id),
+        lastSeen: null
+      };
+    });
   }
 
 // ----------------------------------------------------

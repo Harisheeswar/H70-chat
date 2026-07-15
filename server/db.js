@@ -220,6 +220,12 @@ export const db = {
     writeData(data);
     return true;
   },
+  clearMessages: (chatKey) => {
+    const data = readData();
+    data.messages = data.messages.filter(m => m.chatKey !== chatKey);
+    writeData(data);
+    return true;
+  },
 
   // Messages
   getMessages: (filter) => {

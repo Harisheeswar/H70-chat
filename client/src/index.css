@@ -2248,3 +2248,47 @@ input, button, textarea {
   animation: typing-bounce 1s infinite ease-in-out;
   display: inline-block;
 }
+
+/* Toast slide-in animation */
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Spin the bottle animation */
+.bottle-spin-anim {
+  animation: bottleSpin 2s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+
+@keyframes bottleSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(1080deg);
+  }
+}
+
+/* Mobile input bar styling overrides for better screen fitting */
+@media (max-width: 768px) {
+  .chat-input-bar {
+    gap: 0.3rem !important;
+    padding: 0.35rem 0.5rem !important;
+  }
+  .input-icon-btn {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 1.1rem !important;
+  }
+  .chat-text-input {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.85rem !important;
+    border-radius: 8px !important;
+  }
+}

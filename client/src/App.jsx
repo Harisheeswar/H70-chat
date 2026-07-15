@@ -71,6 +71,9 @@ export default function App() {
   const [storyContent, setStoryContent] = useState('');
   const [storyFile, setStoryFile] = useState(null);
   const [isEmojiOpen, setIsEmojiOpen] = useState(false);
+  const [isGifOpen, setIsGifOpen] = useState(false);
+  const [isGameSelectorOpen, setIsGameSelectorOpen] = useState(false);
+  const [activeToast, setActiveToast] = useState(null);
   const [roomSearchInput, setRoomSearchInput] = useState('');
   const [theme, setTheme] = useState(localStorage.getItem('h70_theme') || 'dark');
   const [typingUsers, setTypingUsers] = useState([]);
@@ -130,6 +133,13 @@ export default function App() {
     }
     localStorage.setItem('h70_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (activeToast) {
+      const t = setTimeout(() => setActiveToast(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [activeToast]);
 
   const userRef = useRef(user);
   useEffect(() => {
@@ -447,6 +457,24 @@ export default function App() {
           ...prev,
           [msg.roomId]: (prev[msg.roomId] || 0) + 1
         }));
+
+        // Notification Toast for Joined Rooms
+        let isJoined = false;
+        try {
+          const joinedStr = localStorage.getItem('h70_joined_rooms');
+          const joinedList = joinedStr ? JSON.parse(joinedStr) : [];
+          isJoined = joinedList.includes(msg.roomId);
+        } catch (e) {}
+
+        if (isJoined) {
+          const room = roomsRef.current.find(r => r.id === msg.roomId);
+          if (room) {
+            setActiveToast({
+              title: `# ${room.name}`,
+              content: `${msg.senderNickname}: ${msg.type === 'text' ? msg.content : '📷 Shared media'}`
+            });
+          }
+        }
       }
     });
 
@@ -977,6 +1005,168 @@ export default function App() {
     
     socketRef.current?.emit('send-direct-message', newMsg);
     setMessages(prev => [...prev, newMsg]);
+  };
+
+  const handleStartTruthOrDare = () => {
+    const gameState = {
+      status: 'waiting',
+      selection: null,
+      prompt: null,
+      initiatorId: user?.id,
+      targetId: currentChat?.id
+    };
+    
+    const chatKey = [user?.id, currentChat?.id].sort().join('-');
+    const newMsg = {
+      id: 'msg_' + Math.random().toString(36).substring(2, 9),
+      senderId: user?.id,
+      senderNickname: user?.nickname,
+      recipientId: currentChat?.id,
+      chatKey,
+      type: 'game_truth_dare',
+      content: JSON.stringify(gameState),
+      timestamp: new Date().toISOString()
+    };
+    
+    socketRef.current?.emit('send-direct-message', newMsg);
+    setMessages(prev => [...prev, newMsg]);
+  };
+
+  const handleTruthOrDareChoice = (msg, choice) => {
+    const truths = [
+      "What is your biggest secret?",
+      "Who is your crush in this app?",
+      "What is the most embarrassing thing you've done?",
+      "Have you ever lied to your best friend?",
+      "What is your most useless talent?",
+      "What is the worst gift you have ever received?",
+      "What is your biggest fear?",
+      "What is the weirdest food combination you eat?"
+    ];
+    const dares = [
+      "Send a funny selfie right now!",
+      "Type your next 5 messages using only emojis!",
+      "Sing a song on voice message!",
+      "Reveal your secret nickname!",
+      "Send a screenshot of your home screen!",
+      "Say something super nice to me!",
+      "Write a short poem about me right now!",
+      "Tell a funny joke right now!"
+    ];
+
+    let gameState;
+    try {
+      gameState = JSON.parse(msg.content);
+    } catch (e) {
+      return;
+    }
+
+    const list = choice === 'truth' ? truths : dares;
+    const randomPrompt = list[Math.floor(Math.random() * list.length)];
+
+    const updatedState = {
+      ...gameState,
+      status: 'chosen',
+      selection: choice,
+      prompt: randomPrompt,
+      choserNickname: user?.nickname
+    };
+
+    const chatKey = [user?.id, currentChat?.id].sort().join('-');
+    const newMsg = {
+      id: 'msg_' + Math.random().toString(36).substring(2, 9),
+      senderId: user?.id,
+      senderNickname: user?.nickname,
+      recipientId: currentChat?.id,
+      chatKey,
+      type: 'game_truth_dare',
+      content: JSON.stringify(updatedState),
+      timestamp: new Date().toISOString()
+    };
+
+    socketRef.current?.emit('send-direct-message', newMsg);
+    setMessages(prev => [...prev, newMsg]);
+  };
+
+  const handleStartSpinBottle = () => {
+    const recipientNickname = currentChat?.nickname || 'Member';
+    const gameState = {
+      status: 'spinning',
+      result: null,
+      initiatorId: user?.id,
+      targetId: currentChat?.id,
+      initiatorNickname: user?.nickname,
+      targetNickname: recipientNickname
+    };
+    
+    const chatKey = [user?.id, currentChat?.id].sort().join('-');
+    const newMsg = {
+      id: 'msg_' + Math.random().toString(36).substring(2, 9),
+      senderId: user?.id,
+      senderNickname: user?.nickname,
+      recipientId: currentChat?.id,
+      chatKey,
+      type: 'game_spin_bottle',
+      content: JSON.stringify(gameState),
+      timestamp: new Date().toISOString()
+    };
+    
+    socketRef.current?.emit('send-direct-message', newMsg);
+    setMessages(prev => [...prev, newMsg]);
+  };
+
+  const handleSpinBottleClick = (msg) => {
+    let gameState;
+    try {
+      gameState = JSON.parse(msg.content);
+    } catch (e) {
+      return;
+    }
+
+    const rand = Math.random() < 0.5 ? 'initiator' : 'target';
+    const updatedState = {
+      ...gameState,
+      status: 'stopped',
+      result: rand
+    };
+
+    const chatKey = [user?.id, currentChat?.id].sort().join('-');
+    const newMsg = {
+      id: 'msg_' + Math.random().toString(36).substring(2, 9),
+      senderId: user?.id,
+      senderNickname: user?.nickname,
+      recipientId: currentChat?.id,
+      chatKey,
+      type: 'game_spin_bottle',
+      content: JSON.stringify(updatedState),
+      timestamp: new Date().toISOString()
+    };
+
+    socketRef.current?.emit('send-direct-message', newMsg);
+    setMessages(prev => [...prev, newMsg]);
+  };
+
+  const handleClearChat = async (e, contactId) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to clear all chat history with this user? This cannot be undone.')) return;
+    try {
+      const res = await fetch('/api/messages/clear', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ recipientId: contactId })
+      });
+      if (res.ok) {
+        if (currentChat && currentChat.type === 'dm' && currentChat.id === contactId) {
+          setMessages([]);
+        }
+        socketRef.current?.emit('get-dm-contacts');
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Image Upload trigger
@@ -1914,52 +2104,190 @@ export default function App() {
                       </button>
                     )}
                   </div>
-                  {onlineUsers.filter(u => {
-                    if (u.id === user?.id) return false;
-                    // Show if: user has DM history OR there are unread messages from them
-                    const hasHistory = dmContacts.includes(u.id);
-                    const hasUnread = (unreadCounts[u.id] || 0) > 0;
-                    return hasHistory || hasUnread;
-                  }).map(u => (
-                    <div 
-                      key={u.id} 
-                      className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
-                      onClick={() => handleSelectChat(u, 'dm')}
-                    >
-                      <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-                        {u.avatar ? (
-                          <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          u.nickname.substring(0, 2).toUpperCase()
+                  {(() => {
+                    const friendsDms = dmContacts.filter(c => user?.friends?.includes(c.id) && !c.id.startsWith('guest_'));
+                    const notFriendsDms = dmContacts.filter(c => !user?.friends?.includes(c.id) && !c.id.startsWith('guest_'));
+                    const guestDms = dmContacts.filter(c => c.id.startsWith('guest_'));
+
+                    return (
+                      <div style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}>
+                        {/* Friends Conversations */}
+                        {friendsDms.length > 0 && (
+                          <>
+                            <div className="section-subtitle" style={{ padding: '0.4rem 0.5rem', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px' }}>
+                              👥 Friends
+                            </div>
+                            {friendsDms.map(u => (
+                              <div 
+                                key={u.id} 
+                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                onClick={() => handleSelectChat(u, 'dm')}
+                              >
+                                <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                                  {u.avatar && token ? (
+                                    <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    u.nickname.substring(0, 2).toUpperCase()
+                                  )}
+                                  <div className="online-dot" style={{ width: '6px', height: '6px', background: u.isOnline ? 'var(--success)' : '#777', boxShadow: u.isOnline ? '0 0 6px var(--success)' : 'none' }}></div>
+                                </div>
+                                <div className="list-item-info">
+                                  <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      {u.nickname} {token && u.animal ? ' ' + u.animal.split(' ')[0] : ''}
+                                      {token && (
+                                        <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
+                                          L{u.level}
+                                        </span>
+                                      )}
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                      {unreadCounts[u.id] > 0 && (
+                                        <span className="unread-badge-sidebar" style={{ background: '#ef4444', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
+                                          {unreadCounts[u.id]}
+                                        </span>
+                                      )}
+                                      {token && (
+                                        <button 
+                                          onClick={(e) => handleClearChat(e, u.id)} 
+                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                          title="Clear chat history"
+                                        >
+                                          🗑️
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="list-item-sub">
+                                    {u.isOnline ? (u.bio || 'Chat with me!') : `Offline`}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </>
                         )}
-                        <div className="online-dot" style={{ width: '6px', height: '6px', background: u.isOnline ? 'var(--success)' : '#777', boxShadow: u.isOnline ? '0 0 6px var(--success)' : 'none' }}></div>
+
+                        {/* Not Friends Conversations */}
+                        {notFriendsDms.length > 0 && (
+                          <>
+                            <div className="section-subtitle" style={{ padding: '0.4rem 0.5rem', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px', marginTop: '0.5rem' }}>
+                              🌐 Not Friends
+                            </div>
+                            {notFriendsDms.map(u => (
+                              <div 
+                                key={u.id} 
+                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                onClick={() => handleSelectChat(u, 'dm')}
+                              >
+                                <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                                  {u.avatar && token ? (
+                                    <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    u.nickname.substring(0, 2).toUpperCase()
+                                  )}
+                                  <div className="online-dot" style={{ width: '6px', height: '6px', background: u.isOnline ? 'var(--success)' : '#777', boxShadow: u.isOnline ? '0 0 6px var(--success)' : 'none' }}></div>
+                                </div>
+                                <div className="list-item-info">
+                                  <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      {u.nickname} {token && u.animal ? ' ' + u.animal.split(' ')[0] : ''}
+                                      {token && (
+                                        <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
+                                          L{u.level}
+                                        </span>
+                                      )}
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                      {unreadCounts[u.id] > 0 && (
+                                        <span className="unread-badge-sidebar" style={{ background: '#ef4444', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
+                                          {unreadCounts[u.id]}
+                                        </span>
+                                      )}
+                                      {token && (
+                                        <button 
+                                          onClick={(e) => handleClearChat(e, u.id)} 
+                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                          title="Clear chat history"
+                                        >
+                                          🗑️
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="list-item-sub">
+                                    {u.isOnline ? (u.bio || 'Chat with me!') : `Offline`}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {/* Guests (Unregistered) */}
+                        {guestDms.length > 0 && (
+                          <>
+                            <div className="section-subtitle" style={{ padding: '0.4rem 0.5rem', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px', marginTop: '0.5rem' }}>
+                              👤 Guests (Unregistered)
+                            </div>
+                            {guestDms.map(u => (
+                              <div 
+                                key={u.id} 
+                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                onClick={() => handleSelectChat(u, 'dm')}
+                              >
+                                <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                                  {u.avatar && token ? (
+                                    <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    u.nickname.substring(0, 2).toUpperCase()
+                                  )}
+                                  <div className="online-dot" style={{ width: '6px', height: '6px', background: u.isOnline ? 'var(--success)' : '#777', boxShadow: u.isOnline ? '0 0 6px var(--success)' : 'none' }}></div>
+                                </div>
+                                <div className="list-item-info">
+                                  <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      {u.nickname} {token && u.animal ? ' ' + u.animal.split(' ')[0] : ''}
+                                      {token && (
+                                        <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
+                                          L{u.level}
+                                        </span>
+                                      )}
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                      {unreadCounts[u.id] > 0 && (
+                                        <span className="unread-badge-sidebar" style={{ background: '#ef4444', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
+                                          {unreadCounts[u.id]}
+                                        </span>
+                                      )}
+                                      {token && (
+                                        <button 
+                                          onClick={(e) => handleClearChat(e, u.id)} 
+                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                          title="Clear chat history"
+                                        >
+                                          🗑️
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="list-item-sub">
+                                    {u.isOnline ? (u.bio || 'Chat with me!') : `Offline`}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {dmContacts.length === 0 && (
+                          <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                            <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>💬</div>
+                            No conversations yet.<br/>Start a DM by clicking on a user in a room!
+                          </div>
+                        )}
                       </div>
-                      <div className="list-item-info">
-                        <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                            {u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''}
-                            <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
-                              L{u.level}
-                            </span>
-                          </span>
-                          {unreadCounts[u.id] > 0 && (
-                            <span className="unread-badge-sidebar" style={{ background: '#ef4444', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
-                              {unreadCounts[u.id]}
-                            </span>
-                          )}
-                        </div>
-                        <div className="list-item-sub">
-                          {u.isOnline ? (u.bio || 'Chat with me!') : `Offline • Left ${formatLastSeen(u.lastSeen)}`}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {onlineUsers.filter(u => u.id !== user?.id && (dmContacts.includes(u.id) || (unreadCounts[u.id] || 0) > 0)).length === 0 && (
-                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                      <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>💬</div>
-                      No conversations yet.<br/>Start a DM by clicking on a user in a room!
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2283,10 +2611,10 @@ export default function App() {
                           style={{ width: '32px', height: '32px', fontSize: '0.8rem', cursor: 'pointer', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
                           onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
                         >
-                          {sender?.avatar ? (
+                          {sender?.avatar && token ? (
                             <img src={sender.avatar} alt={msg.senderNickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
-                            msg.senderNickname?.substring(0, 2).toUpperCase()
+                            <div style={{ fontSize: '0.8rem' }}>👤</div>
                           )}
                         </div>
                       )}
@@ -2300,13 +2628,13 @@ export default function App() {
                               style={{ cursor: 'pointer' }}
                               onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
                             >
-                              {msg.senderNickname} {msg.senderAnimal ? ' ' + msg.senderAnimal.split(' ')[0] : (sender?.animal ? ' ' + sender.animal.split(' ')[0] : '')}
+                              {msg.senderNickname} {token && (msg.senderAnimal ? ' ' + msg.senderAnimal.split(' ')[0] : (sender?.animal ? ' ' + sender.animal.split(' ')[0] : ''))}
                             </span>
                             <span className="message-time">{displayTime ? new Date(displayTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                           </div>
                         )}
 
-                        <div className="message-bubble" style={msg.type === 'game_init' ? { background: 'transparent', padding: 0, border: 'none', boxShadow: 'none' } : {}}>
+                        <div className="message-bubble" style={(msg.type === 'game_init' || msg.type === 'game_truth_dare' || msg.type === 'game_spin_bottle') ? { background: 'transparent', padding: 0, border: 'none', boxShadow: 'none' } : {}}>
                           {msg.type === 'game_init' ? (() => {
                             let gameState;
                             try {
@@ -2323,9 +2651,9 @@ export default function App() {
                               <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '12px', minWidth: '220px', maxWidth: '280px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
                                   <span style={{ fontSize: '1.1rem' }}>🎮</span>
-                                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Tic-Tac-Toe Duel</span>
+                                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Tic-Tac-Toe Duel</span>
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem', background: 'rgba(0,0,0,0.15)', padding: '0.4rem', borderRadius: '8px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', margin: '0.2rem 0' }}>
                                   {gameState.board.map((cell, cellIdx) => (
                                     <div 
                                       key={cellIdx}
@@ -2369,6 +2697,109 @@ export default function App() {
                                     </span>
                                   )}
                                 </div>
+                              </div>
+                            );
+                          })() : msg.type === 'game_truth_dare' ? (() => {
+                            let gameState;
+                            try {
+                              gameState = JSON.parse(msg.content);
+                            } catch (e) {
+                              return <div className="message-bubble">Invalid game state</div>;
+                            }
+                            const isLastMessage = i === messages.length - 1;
+
+                            return (
+                              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '12px', minWidth: '220px', maxWidth: '280px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                                  <span style={{ fontSize: '1.1rem' }}>❓</span>
+                                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Truth or Dare</span>
+                                </div>
+                                {gameState.status === 'waiting' ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>Choose Truth or Dare!</div>
+                                    {isLastMessage ? (
+                                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button 
+                                          className="btn btn-primary" 
+                                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.4rem' }} 
+                                          onClick={() => handleTruthOrDareChoice(msg, 'truth')}
+                                        >
+                                          Truth
+                                        </button>
+                                        <button 
+                                          className="btn btn-primary" 
+                                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.4rem' }} 
+                                          onClick={() => handleTruthOrDareChoice(msg, 'dare')}
+                                        >
+                                          Dare
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>Game expired</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                      {gameState.choserNickname} picked <strong>{gameState.selection.toUpperCase()}</strong>:
+                                    </div>
+                                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem', borderRadius: '6px', fontSize: '0.82rem', color: 'var(--bg-accent-teal)', fontWeight: 600, textAlign: 'center', border: '1px solid var(--border-color)' }}>
+                                      "{gameState.prompt}"
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })() : msg.type === 'game_spin_bottle' ? (() => {
+                            let gameState;
+                            try {
+                              gameState = JSON.parse(msg.content);
+                            } catch (e) {
+                              return <div className="message-bubble">Invalid game state</div>;
+                            }
+                            const isLastMessage = i === messages.length - 1;
+
+                            return (
+                              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '12px', minWidth: '220px', maxWidth: '280px', display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', width: '100%' }}>
+                                  <span style={{ fontSize: '1.1rem' }}>🍾</span>
+                                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Spin the Bottle</span>
+                                </div>
+                                
+                                <div 
+                                  style={{ 
+                                    fontSize: '3rem', 
+                                    transition: 'transform 2s cubic-bezier(0.25, 0.1, 0.25, 1)',
+                                    transform: gameState.status === 'spinning' ? 'rotate(1080deg)' : (gameState.result === 'initiator' ? 'rotate(0deg)' : 'rotate(180deg)'),
+                                    margin: '0.75rem 0'
+                                  }}
+                                  className={gameState.status === 'spinning' ? 'bottle-spin-anim' : ''}
+                                >
+                                  🍾
+                                </div>
+
+                                {gameState.status === 'spinning' ? (
+                                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    {isLastMessage ? (
+                                      <button 
+                                        className="btn btn-primary" 
+                                        style={{ width: '100%', fontSize: '0.75rem', padding: '0.4rem' }} 
+                                        onClick={() => handleSpinBottleClick(msg)}
+                                      >
+                                        Stop & Point
+                                      </button>
+                                    ) : (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>Game expired</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                    👉 Points to:{' '} 
+                                    <span style={{ color: 'var(--bg-accent-teal)', fontSize: '0.85rem' }}>
+                                      {gameState.result === 'initiator' ? gameState.initiatorNickname : gameState.targetNickname}
+                                    </span>!
+                                  </div>
+                                )}
                               </div>
                             );
                           })() : (
@@ -2503,15 +2934,17 @@ export default function App() {
                     // Standard Chat typing panel
                     <>
                       {/* File Selector trigger */}
-                      <label className="input-icon-btn" title="Upload Image">
-                        <Image size={20} />
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          onChange={handleImageSelect} 
-                          style={{ display: 'none' }} 
-                        />
-                      </label>
+                      {token && (
+                        <label className="input-icon-btn" title="Upload Image">
+                          <Image size={20} />
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleImageSelect} 
+                            style={{ display: 'none' }} 
+                          />
+                        </label>
+                      )}
 
                        {/* Micro recorder trigger */}
                       <button className="input-icon-btn" onClick={startRecording} title="Record Voice Message">
@@ -2522,7 +2955,7 @@ export default function App() {
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <button 
                           className="input-icon-btn" 
-                          onClick={() => setIsEmojiOpen(!isEmojiOpen)} 
+                          onClick={() => { setIsEmojiOpen(!isEmojiOpen); setIsGifOpen(false); setIsGameSelectorOpen(false); }} 
                           title="Insert Emoji"
                           style={{ fontSize: '1.25rem', padding: '2px' }}
                         >
@@ -2547,11 +2980,84 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* Tic Tac Toe game trigger */}
-                      {currentChat.type === 'dm' && token && (
-                        <button className="input-icon-btn" onClick={handleStartGame} title="Play Tic-Tac-Toe Duel">
-                          <Gamepad2 size={20} />
+                      {/* GIF trigger */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <button 
+                          className="input-icon-btn" 
+                          onClick={() => { setIsGifOpen(!isGifOpen); setIsEmojiOpen(false); setIsGameSelectorOpen(false); }} 
+                          title="Send GIF"
+                          style={{ fontSize: '0.85rem', fontWeight: 'bold', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', width: '36px', height: '36px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          GIF
                         </button>
+                        {isGifOpen && (
+                          <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '8px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', width: '260px', maxHeight: '200px', overflowY: 'auto' }}>
+                            {[
+                              { name: "Laughing", url: "https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif" },
+                              { name: "Thumbs Up", url: "https://media.giphy.com/media/3o7absbD71SJJ43AlG/giphy.gif" },
+                              { name: "Wave", url: "https://media.giphy.com/media/3o7TKUM3Y5MgKyKqJy/giphy.gif" },
+                              { name: "Crying", url: "https://media.giphy.com/media/2WxWlkKWUsQ5W/giphy.gif" },
+                              { name: "OMG", url: "https://media.giphy.com/media/3o7527pa7qs9kCG78A/giphy.gif" },
+                              { name: "Dance", url: "https://media.giphy.com/media/l3V0lsG3Js1ZKCrII/giphy.gif" },
+                              { name: "Yes!", url: "https://media.giphy.com/media/3o6UB3LJgrAjylZcoM/giphy.gif" },
+                              { name: "Facepalm", url: "https://media.giphy.com/media/3og0INyMrrC67vc1cA/giphy.gif" },
+                              { name: "Party", url: "https://media.giphy.com/media/l2JhORT5IFnj6ioko/giphy.gif" }
+                            ].map(gif => (
+                              <img 
+                                key={gif.url} 
+                                src={gif.url} 
+                                alt={gif.name} 
+                                onClick={() => {
+                                  if (currentChat.type === 'room') {
+                                    socketRef.current?.emit('send-room-message', { roomId: currentChat.id, type: 'image', content: gif.url });
+                                  } else {
+                                    socketRef.current?.emit('send-direct-message', { recipientId: currentChat.id, type: 'image', content: gif.url });
+                                  }
+                                  setIsGifOpen(false);
+                                }}
+                                style={{ width: '100%', height: '50px', objectFit: 'cover', borderRadius: '6px', cursor: 'pointer', border: '1px solid var(--border-color)' }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Game selector trigger */}
+                      {currentChat.type === 'dm' && token && (
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <button 
+                            className="input-icon-btn" 
+                            onClick={() => { setIsGameSelectorOpen(!isGameSelectorOpen); setIsEmojiOpen(false); setIsGifOpen(false); }} 
+                            title="Play In-Chat Game"
+                          >
+                            <Gamepad2 size={20} />
+                          </button>
+                          {isGameSelectorOpen && (
+                            <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', width: '160px' }}>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.35rem' }} 
+                                onClick={() => { handleStartGame(); setIsGameSelectorOpen(false); }}
+                              >
+                                ❌ Tic-Tac-Toe
+                              </button>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.35rem' }} 
+                                onClick={() => { handleStartTruthOrDare(); setIsGameSelectorOpen(false); }}
+                              >
+                                ❓ Truth or Dare
+                              </button>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.35rem' }} 
+                                onClick={() => { handleStartSpinBottle(); setIsGameSelectorOpen(false); }}
+                              >
+                                🍾 Spin the Bottle
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       <input 
@@ -3018,10 +3524,10 @@ export default function App() {
           </div>
 
           <div className="profile-avatar-large" style={{ overflow: 'hidden', position: 'relative', borderRadius: '50%', border: '2px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            {selectedProfileUser.avatar ? (
+            {selectedProfileUser.avatar && (token || selectedProfileUser.id === user?.id) ? (
               <img src={selectedProfileUser.avatar} alt={selectedProfileUser.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              selectedProfileUser.nickname?.substring(0, 2).toUpperCase()
+              <div style={{ fontSize: '2.5rem' }}>👤</div>
             )}
           </div>
 
@@ -3077,7 +3583,7 @@ export default function App() {
           </div>
 
           <div className="profile-stats-card">
-            {selectedProfileUser.animal && (
+            {selectedProfileUser.animal && (token || selectedProfileUser.id === user?.id) && (
               <div className="profile-stat-row" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
                 <span className="text-secondary">Spirit Animal</span>
                 <span className="font-semibold text-primary">{selectedProfileUser.animal}</span>
@@ -3085,7 +3591,13 @@ export default function App() {
             )}
             <div className="profile-stat-row">
               <span className="text-secondary">Current Level</span>
-              <span className="font-semibold text-primary">{selectedProfileUser.level || 1} ({getLevelTier(selectedProfileUser.level || 1).name})</span>
+              <span className="font-semibold text-primary">
+                {token || selectedProfileUser.id === user?.id ? (
+                  `${selectedProfileUser.level || 1} (${getLevelTier(selectedProfileUser.level || 1).name})`
+                ) : (
+                  '🔒 Locked'
+                )}
+              </span>
             </div>
             {selectedProfileUser.id === user?.id && token && (
               <div className="profile-stat-row">
@@ -3096,7 +3608,15 @@ export default function App() {
           </div>
 
           {/* Stories and Bio with Privacy Check */}
-          {selectedProfileUser.id !== user?.id && selectedProfileUser.privacyMode === 'private' && getFriendshipState(selectedProfileUser) !== 'friends' ? (
+          {selectedProfileUser.id !== user?.id && !token ? (
+            <div className="private-profile-notice" style={{ textAlign: 'center', padding: '1.75rem 1.25rem', background: 'var(--bg-tertiary)', borderRadius: '16px', border: '1px dashed var(--border-color)', margin: '1.25rem 0' }}>
+              <div style={{ fontSize: '1.75rem', marginBottom: '0.75rem' }}>🔒</div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Account details locked</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: 1.4 }}>
+                Register or sign in to view member avatars, biographies, level progression, and spirit animals.
+              </div>
+            </div>
+          ) : selectedProfileUser.id !== user?.id && selectedProfileUser.privacyMode === 'private' && getFriendshipState(selectedProfileUser) !== 'friends' ? (
             <div className="private-profile-notice" style={{ textAlign: 'center', padding: '1.75rem 1.25rem', background: 'var(--bg-tertiary)', borderRadius: '16px', border: '1px dashed var(--border-color)', margin: '1.25rem 0' }}>
               <div style={{ fontSize: '1.75rem', marginBottom: '0.75rem' }}>🔒</div>
               <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>This Account is Private</div>
@@ -3381,10 +3901,40 @@ export default function App() {
                 let btnText = 'Add Friend';
                 let btnClass = 'btn-primary';
                 if (state === 'friends') {
-                  btnText = 'Friends (Click to Unfriend)';
-                  btnClass = 'btn-secondary';
-                } else if (state === 'sent') {
-                  btnText = 'Request Sent (Cancel)';
+                  return (
+                    <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                      <button 
+                        className="btn btn-secondary" 
+                        disabled 
+                        style={{ flex: 1, fontSize: '0.85rem', cursor: 'default', background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}
+                      >
+                        ✓ Friends
+                      </button>
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ flex: 1, fontSize: '0.85rem', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                        onClick={async () => {
+                          if (window.confirm(`Are you sure you want to unfriend ${selectedProfileUser.nickname}?`)) {
+                            try {
+                              const res = await fetch('/api/friends/remove', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({ friendId: selectedProfileUser.id })
+                              });
+                              const updated = await res.json();
+                              if (res.ok) setUser(updated);
+                            } catch (err) { console.error(err); }
+                          }
+                        }}
+                      >
+                        Unfriend
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (state === 'sent') {
+                  btnText = 'Cancel Request';
                   btnClass = 'btn-secondary';
                 } else if (state === 'received') {
                   btnText = 'Accept Friend Request';
@@ -3396,7 +3946,7 @@ export default function App() {
                     className={`btn ${btnClass}`}
                     style={{ width: '100%', fontSize: '0.85rem' }}
                     onClick={async () => {
-                      const url = (state === 'friends' || state === 'sent') ? '/api/friends/remove' : '/api/friends/add';
+                      const url = state === 'sent' ? '/api/friends/remove' : '/api/friends/add';
                       try {
                         const res = await fetch(url, {
                           method: 'POST',
@@ -3929,6 +4479,38 @@ export default function App() {
                 <VideoOff size={16} />
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Floating Toast Notification */}
+      {activeToast && (
+        <div 
+          className="active-toast-alert"
+          onClick={() => setActiveToast(null)}
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--bg-accent-teal)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            borderRadius: '12px',
+            padding: '0.85rem 1.25rem',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.25rem',
+            cursor: 'pointer',
+            maxWidth: '280px',
+            animation: 'slideIn 0.3s ease-out'
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--bg-accent-teal)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {activeToast.title}
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', wordBreak: 'break-word', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {activeToast.content}
           </div>
         </div>
       )}
