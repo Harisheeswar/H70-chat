@@ -103,6 +103,7 @@ export default function App() {
   const peerConnectionRef = useRef(null);
 
   const [unreadCounts, setUnreadCounts] = useState({});
+  const [roomUnreadCounts, setRoomUnreadCounts] = useState({});
   const totalUnread = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   const currentChatRef = useRef(currentChat);
@@ -415,11 +416,18 @@ export default function App() {
     });
 
     socket.on('room-message', (msg) => {
-      setMessages(prev => {
-        // Prevent duplicates
-        if (prev.some(m => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
+      const currChat = currentChatRef.current;
+      if (currChat && currChat.type === 'room' && currChat.id === msg.roomId) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      } else {
+        setRoomUnreadCounts(prev => ({
+          ...prev,
+          [msg.roomId]: (prev[msg.roomId] || 0) + 1
+        }));
+      }
     });
 
     socket.on('direct-message', (msg) => {
@@ -713,6 +721,20 @@ export default function App() {
     if (type === 'room') {
       setCurrentChat({ type: 'room', id: item.id, name: item.name, admins: item.admins || [], avatar: item.avatar || null, creatorId: item.creatorId || null });
       setMessages([]);
+      setRoomUnreadCounts(prev => ({ ...prev, [item.id]: 0 }));
+
+      // Save room ID to joined rooms list in localStorage
+      try {
+        const joinedStr = localStorage.getItem('h70_joined_rooms');
+        let joinedList = joinedStr ? JSON.parse(joinedStr) : [];
+        if (!joinedList.includes(item.id)) {
+          joinedList.push(item.id);
+          localStorage.setItem('h70_joined_rooms', JSON.stringify(joinedList));
+        }
+      } catch (err) {
+        console.error('Failed to save joined rooms to localStorage', err);
+      }
+
       socketRef.current?.emit('join-room', item.id);
     } else {
       setCurrentChat({ type: 'dm', id: item.id, nickname: item.nickname });
@@ -1481,14 +1503,19 @@ export default function App() {
             H
           </div>
 
-          <button className={`vertical-nav-btn ${currentNav === 'home' ? 'active' : ''}`} onClick={() => { setCurrentNav('home'); setMobileMenuOpen(false); }} title="Home Dashboard">
+          <button className={`vertical-nav-btn ${currentNav === 'home' ? 'active' : ''}`} onClick={() => { setCurrentNav('home'); setMobileMenuOpen(false); }} title="Discover Feed">
             <Compass size={20} />
-            <span>Home</span>
+            <span>Discover</span>
           </button>
 
-          <button className={`vertical-nav-btn ${currentNav === 'chat' ? 'active' : ''}`} onClick={() => { setCurrentNav('chat'); setMobileMenuOpen(false); }} title="Channels & Chat">
+          <button className={`vertical-nav-btn ${currentNav === 'chat' ? 'active' : ''}`} onClick={() => { setCurrentNav('chat'); setMobileMenuOpen(false); }} title="Channels & Chat" style={{ position: 'relative' }}>
             <MessageSquare size={20} />
             <span>Chat</span>
+            {totalUnread > 0 && (
+              <span className="nav-unread-badge" style={{ position: 'absolute', top: '2px', right: '14px', background: '#ef4444', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '8px' }}>
+                {totalUnread}
+              </span>
+            )}
           </button>
 
           <button className={`vertical-nav-btn ${currentNav === 'people' ? 'active' : ''}`} onClick={() => { setCurrentNav('people'); setMobileMenuOpen(false); }} title="Social Friends & Blocks">
@@ -1540,7 +1567,7 @@ export default function App() {
             <Menu size={22} />
           </button>
           <div className="app-brand" style={{ fontSize: '1.05rem', letterSpacing: '0.5px' }}>
-            {currentNav === 'home' && 'Guidelines'}
+            {currentNav === 'home' && 'Discover'}
             {currentNav === 'chat' && 'Active Channels'}
             {currentNav === 'people' && 'Social Roster'}
           </div>
@@ -1608,7 +1635,10 @@ export default function App() {
               {/* Navigation sub-tabs inside active Chat nav */}
               <div className="sidebar-tabs" style={{ background: 'rgba(0,0,0,0.15)', padding: '4px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                 <button className={`tab-btn ${activeTab === 'rooms' ? 'active' : ''}`} onClick={() => setActiveTab('rooms')} style={{ fontSize: '0.75rem', padding: '0.45rem' }}>
-                  Rooms
+                  Rooms {(() => {
+                    const cnt = Object.values(roomUnreadCounts).reduce((a, b) => a + b, 0);
+                    return cnt > 0 ? `(${cnt})` : '';
+                  })()}
                 </button>
                 <button className={`tab-btn ${activeTab === 'dms' ? 'active' : ''}`} onClick={() => setActiveTab('dms')} style={{ fontSize: '0.75rem', padding: '0.45rem' }}>
                   DMs {(() => {
@@ -1623,24 +1653,40 @@ export default function App() {
 
               {activeTab === 'rooms' && (
                 <div style={{ padding: '0.5rem 0' }}>
-                  <div className="section-title">Rooms list</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.5rem 0.5rem' }}>
+                    <div className="section-title" style={{ margin: 0 }}>Rooms list</div>
+                    <button
+                      onClick={() => setIsCreateRoomOpen(true)}
+                      style={{ background: 'var(--bg-accent)', border: 'none', color: '#fff', borderRadius: '8px', padding: '4px 10px', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                      title="Create a new lounge"
+                    >
+                      <Plus size={12} /> Create Space
+                    </button>
+                  </div>
                   {rooms.map(room => (
                     <div 
-                      key={room.id} 
-                      className={`list-item ${currentChat?.type === 'room' && currentChat.id === room.id ? 'active' : ''}`}
-                      onClick={() => handleSelectChat(room, 'room')}
-                    >
-                      {room.avatar ? (
-                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                          <img src={room.avatar} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                       key={room.id} 
+                       className={`list-item ${currentChat?.type === 'room' && currentChat.id === room.id ? 'active' : ''}`}
+                       onClick={() => handleSelectChat(room, 'room')}
+                     >
+                       {room.avatar ? (
+                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                           <img src={room.avatar} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                         </div>
+                       ) : (
+                         <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                           #
+                         </div>
+                       )}
+                       <div className="list-item-info">
+                        <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <span>{room.name}</span>
+                          {roomUnreadCounts[room.id] > 0 && (
+                            <span className="room-unread-badge" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
+                              {roomUnreadCounts[room.id]}
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                          #
-                        </div>
-                      )}
-                      <div className="list-item-info">
-                        <div className="list-item-title">{room.name}</div>
                       </div>
                     </div>
                   ))}
@@ -1788,61 +1834,90 @@ export default function App() {
       {/* COLUMN 3: Right main workspace pane (White Content panel overrides) */}
       <div className="main-content-pane">
         
-        {/* NAV 1: HOME FEED DASHBOARD */}
-        {currentNav === 'home' && (
-          <div className="white-dashboard">
-            <div className="mobile-home-header" style={{ display: 'none', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-              <button 
-                className="mobile-menu-btn" 
-                onClick={() => setMobileMenuOpen(true)}
-                style={{ background: 'transparent', border: 'none', color: '#1f2937', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
-              >
-                <Menu size={24} />
-                {totalUnread > 0 && (
-                  <span className="mobile-unread-badge">{totalUnread}</span>
-                )}
-              </button>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1f2937' }}>H70 Home</h2>
-            </div>
-            <h1 className="white-dashboard-title">
-              Hello, {user?.nickname || 'Guest'}!
-            </h1>
-            <div className="white-dashboard-grid">
-              <div className="white-dashboard-card">
-                <h2 className="white-dashboard-card-title">Media Feed</h2>
-                <div className="white-dashboard-card-subtitle">Share moments & view creative stories</div>
-                <p className="white-dashboard-card-content">
-                  Discover community posts, viral media content, and text updates published by members of the Lounge. Post your own stories to level up!
-                </p>
-                <button className="white-dashboard-card-btn" onClick={() => { setCurrentNav('chat'); setActiveTab('online'); }}>
-                  EXPLORE LOUNGES
+        {/* NAV 1: DISCOVER FEED DASHBOARD */}
+        {currentNav === 'home' && (() => {
+          let joinedRoomsList = [];
+          try {
+            const joinedRoomIds = JSON.parse(localStorage.getItem('h70_joined_rooms') || '[]');
+            joinedRoomsList = rooms.filter(r => joinedRoomIds.includes(r.id));
+          } catch (e) {
+            console.error(e);
+          }
+          return (
+            <div className="white-dashboard">
+              <div className="mobile-home-header" style={{ display: 'none', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <button 
+                  className="mobile-menu-btn" 
+                  onClick={() => setMobileMenuOpen(true)}
+                  style={{ background: 'transparent', border: 'none', color: '#1f2937', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+                >
+                  <Menu size={24} />
+                  {totalUnread > 0 && (
+                    <span className="mobile-unread-badge">{totalUnread}</span>
+                  )}
                 </button>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1f2937' }}>H70 Discover</h2>
               </div>
+              <h1 className="white-dashboard-title">
+                Hello, {user?.nickname || 'Guest'}!
+              </h1>
+              <div className="white-dashboard-grid">
+                <div className="white-dashboard-card">
+                  <h2 className="white-dashboard-card-title">Joined Lounges</h2>
+                  <div className="white-dashboard-card-subtitle">Quick access to rooms you joined</div>
+                  <div className="joined-rooms-scroll-list" style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
+                    {joinedRoomsList.length > 0 ? (
+                      joinedRoomsList.map(room => (
+                        <div 
+                          key={room.id} 
+                          onClick={() => {
+                            handleSelectChat(room, 'room');
+                            setCurrentNav('chat');
+                          }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.8rem', background: '#f9fafb', borderRadius: '10px', cursor: 'pointer', border: '1px solid #e5e7eb', transition: 'all 0.2s' }}
+                          className="joined-room-item-hover"
+                        >
+                          <div className="avatar-circle" style={{ width: '30px', height: '30px', fontSize: '0.75rem', background: 'rgba(124, 77, 255, 0.1)', color: 'var(--bg-accent)', border: '1.5px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                            {room.avatar ? <img src={room.avatar} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '#'}
+                          </div>
+                          <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {room.name}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem 0' }}>
+                        You haven't joined any lounges yet. Discover public rooms below to start!
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-              <div className="white-dashboard-card">
-                <h2 className="white-dashboard-card-title">Public Hubs</h2>
-                <div className="white-dashboard-card-subtitle">Connect inside active chat channels</div>
-                <p className="white-dashboard-card-content">
-                  Meet online members in default rooms, developer forums, or gaming zones. Start video conference mesh calls or share media items instantly.
-                </p>
-                <button className="white-dashboard-card-btn" onClick={() => { setCurrentNav('chat'); setActiveTab('rooms'); }}>
-                  DISCOVER ROOMS
-                </button>
-              </div>
+                <div className="white-dashboard-card">
+                  <h2 className="white-dashboard-card-title">Public Hubs</h2>
+                  <div className="white-dashboard-card-subtitle">Connect inside active chat channels</div>
+                  <p className="white-dashboard-card-content">
+                    Meet online members in default rooms, developer forums, or gaming zones. Start video conference mesh calls or share media items instantly.
+                  </p>
+                  <button className="white-dashboard-card-btn" onClick={() => { setCurrentNav('chat'); setActiveTab('rooms'); }}>
+                    DISCOVER ROOMS
+                  </button>
+                </div>
 
-              <div className="white-dashboard-card">
-                <h2 className="white-dashboard-card-title">Private Spaces</h2>
-                <div className="white-dashboard-card-subtitle">Host your own secured lounges</div>
-                <p className="white-dashboard-card-content">
-                  Design a personal invite-only room or setup optional password protection. Customize room avatars and promote moderators.
-                </p>
-                <button className="white-dashboard-card-btn" onClick={() => setIsCreateRoomOpen(true)}>
-                  CREATE SPACE
-                </button>
+                <div className="white-dashboard-card">
+                  <h2 className="white-dashboard-card-title">Private Spaces</h2>
+                  <div className="white-dashboard-card-subtitle">Host your own secured lounges</div>
+                  <p className="white-dashboard-card-content">
+                    Design a personal invite-only room or setup optional password protection. Customize room avatars and promote moderators.
+                  </p>
+                  <button className="white-dashboard-card-btn" onClick={() => setIsCreateRoomOpen(true)}>
+                    CREATE SPACE
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* NAV 2: CHAT WORKSPACE */}
         {currentNav === 'chat' && (
