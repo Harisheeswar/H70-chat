@@ -661,6 +661,17 @@ export default function App() {
     }
   };
 
+  // Stranger Match (Random DM)
+  const handleRandomChat = () => {
+    const candidates = onlineUsers.filter(u => u.id !== user?.id && u.role !== 'supervisor');
+    if (candidates.length === 0) {
+      alert('No other active users online right now for a random match. Invite some friends!');
+      return;
+    }
+    const randomUser = candidates[Math.floor(Math.random() * candidates.length)];
+    handleSelectChat(randomUser, 'dm');
+  };
+
   // Create room modal
   const handleCreateRoom = (e) => {
     e.preventDefault();
