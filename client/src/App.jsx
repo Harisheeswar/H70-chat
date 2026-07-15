@@ -284,8 +284,10 @@ export default function App() {
   };
 
   const checkIsMutualFriend = (recipientId) => {
+    if (!user) return false;
+    if (user.friends?.includes(recipientId)) return true;
     const recipient = onlineUsers.find(u => u.id === recipientId);
-    if (!recipient || !user) return false;
+    if (!recipient) return false;
     const addedThem = user.friends?.includes(recipientId);
     const addedMe = recipient.friends?.includes(user.id);
     return addedThem && addedMe;
@@ -526,6 +528,14 @@ export default function App() {
 
     socket.on('direct-history', ({ recipientId, messages: history }) => {
       setMessages(history);
+    });
+
+    socket.on('direct-message-updated-live', ({ msgId, content }) => {
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content } : m));
+    });
+
+    socket.on('direct-message-views-updated-live', ({ msgId, viewsRemaining, content }) => {
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, viewsRemaining, content } : m));
     });
 
     socket.on('direct-message-error', ({ error }) => {
@@ -1064,7 +1074,9 @@ export default function App() {
       "What is your most useless talent?",
       "What is the worst gift you have ever received?",
       "What is your biggest fear?",
-      "What is the weirdest food combination you eat?"
+      "What is the weirdest food combination you eat?",
+      "What is the most childish thing you still do?",
+      "Have you ever pretended to be sick to avoid someone?"
     ];
     const dares = [
       "Send a funny selfie right now!",
@@ -1074,7 +1086,9 @@ export default function App() {
       "Send a screenshot of your home screen!",
       "Say something super nice to me!",
       "Write a short poem about me right now!",
-      "Tell a funny joke right now!"
+      "Tell a funny joke right now!",
+      "Change your status to something embarrassing for 1 hour!",
+      "Send me your most used emoji and explain why!"
     ];
 
     let gameState;
@@ -1096,19 +1110,11 @@ export default function App() {
     };
 
     const chatKey = [user?.id, currentChat?.id].sort().join('-');
-    const newMsg = {
-      id: 'msg_' + Math.random().toString(36).substring(2, 9),
-      senderId: user?.id,
-      senderNickname: user?.nickname,
-      recipientId: currentChat?.id,
-      chatKey,
-      type: 'game_truth_dare',
-      content: JSON.stringify(updatedState),
-      timestamp: new Date().toISOString()
-    };
+    const newContent = JSON.stringify(updatedState);
 
-    socketRef.current?.emit('send-direct-message', newMsg);
-    setMessages(prev => [...prev, newMsg]);
+    // Update existing message in-place (no duplicate)
+    socketRef.current?.emit('update-direct-message', { msgId: msg.id, chatKey, content: newContent });
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: newContent } : m));
   };
 
   const handleStartSpinBottle = () => {
@@ -1119,7 +1125,9 @@ export default function App() {
       initiatorId: user?.id,
       targetId: currentChat?.id,
       initiatorNickname: user?.nickname,
-      targetNickname: recipientNickname
+      targetNickname: recipientNickname,
+      currentTurn: user?.id, // Initiator spins first
+      spinCount: 0
     };
     
     const chatKey = [user?.id, currentChat?.id].sort().join('-');
@@ -1146,27 +1154,37 @@ export default function App() {
       return;
     }
 
+    // Turn-based: only the current turn holder can spin
+    const currentTurn = gameState.currentTurn || gameState.initiatorId;
+    if (currentTurn !== user?.id) return; // Not your turn!
+
     const rand = Math.random() < 0.5 ? 'initiator' : 'target';
+    // After spin, give next turn to the other player
+    const nextTurn = user?.id === gameState.initiatorId ? gameState.targetId : gameState.initiatorId;
     const updatedState = {
       ...gameState,
       status: 'stopped',
-      result: rand
+      result: rand,
+      currentTurn: nextTurn,
+      spinCount: (gameState.spinCount || 0) + 1
     };
 
     const chatKey = [user?.id, currentChat?.id].sort().join('-');
-    const newMsg = {
-      id: 'msg_' + Math.random().toString(36).substring(2, 9),
-      senderId: user?.id,
-      senderNickname: user?.nickname,
-      recipientId: currentChat?.id,
-      chatKey,
-      type: 'game_spin_bottle',
-      content: JSON.stringify(updatedState),
-      timestamp: new Date().toISOString()
-    };
+    const newContent = JSON.stringify(updatedState);
 
-    socketRef.current?.emit('send-direct-message', newMsg);
-    setMessages(prev => [...prev, newMsg]);
+    // Update existing message in-place (no duplicate)
+    socketRef.current?.emit('update-direct-message', { msgId: msg.id, chatKey, content: newContent });
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: newContent } : m));
+  };
+
+  // Quick-spin: let one button instantly trigger spin if active spin message exists
+  const handleQuickSpin = () => {
+    const spinMsg = messages.slice().reverse().find(m => m.type === 'game_spin_bottle');
+    if (spinMsg) {
+      handleSpinBottleClick(spinMsg);
+    } else {
+      handleStartSpinBottle();
+    }
   };
 
   const handleClearChat = async (e, contactId) => {
@@ -1193,7 +1211,7 @@ export default function App() {
   };
 
   // Image Upload trigger
-  const handleImageSelect = async (e) => {
+  const handleImageSelect = async (e, viewOnce = false) => {
     const file = e.target.files[0];
     if (!file || !currentChat) return;
 
@@ -1217,13 +1235,15 @@ export default function App() {
       } else {
         socketRef.current?.emit('send-direct-message', {
           recipientId: currentChat.id,
-          type: 'image',
-          content: data.url
+          type: viewOnce ? 'image_view_once' : 'image',
+          content: data.url,
+          viewsRemaining: viewOnce ? 1 : null
         });
       }
     } catch (err) {
       alert('Image upload failed: ' + err.message);
     }
+    e.target.value = '';
   };
 
   // ----------------------------------------------------
@@ -2642,13 +2662,11 @@ export default function App() {
                   const isOutgoing = msg.senderId === user?.id;
                   const showAvatar = i === 0 || messages[i - 1].senderId !== msg.senderId;
                   const sender = onlineUsers.find(u => u.id === msg.senderId);
-                  // Schema fallbacks: DB uses {type, content, createdAt}, live uses {text, mediaType, mediaUrl, timestamp}
                   const displayTime = msg.timestamp || msg.createdAt || null;
-                  // Text content: check msg.text first, then if type is text use content, else use content as fallback
-                  const displayText = msg.text || (msg.content && (msg.type === 'text' || !msg.type || !['image','audio','video'].includes(msg.type)) ? msg.content : '') || '';
-                  // Media type: check explicit mediaType, then fall back to DB type field if it's media
-                  const isMedia = (msg.type === 'image' || msg.type === 'audio' || msg.type === 'video' || msg.mediaType);
-                  const displayMediaType = msg.mediaType || (isMedia ? msg.type : null);
+                  const displayText = msg.text || (msg.content && (msg.type === 'text' || !msg.type || !['image','audio','video','image_view_once'].includes(msg.type)) ? msg.content : '') || '';
+                  const isMedia = (msg.type === 'image' || msg.type === 'audio' || msg.type === 'video' || msg.type === 'image_view_once' || msg.mediaType);
+                  const isViewOnce = msg.type === 'image_view_once';
+                  const displayMediaType = msg.mediaType || (isMedia ? (isViewOnce ? 'image' : msg.type) : null);
                   const displayMediaUrl = msg.mediaUrl || (isMedia ? msg.content : '');
 
                   return (
@@ -2805,61 +2823,130 @@ export default function App() {
                             } catch (e) {
                               return <div className="message-bubble">Invalid game state</div>;
                             }
-                            const isLastMessage = i === messages.length - 1;
+                            const currentTurn = gameState.currentTurn || gameState.initiatorId;
+                            const isMyTurn = currentTurn === user?.id;
+                            const currentTurnName = currentTurn === gameState.initiatorId ? gameState.initiatorNickname : gameState.targetNickname;
+                            const spinCount = gameState.spinCount || 0;
 
                             return (
-                              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '12px', minWidth: '220px', maxWidth: '280px', display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', width: '100%' }}>
-                                  <span style={{ fontSize: '1.1rem' }}>🍾</span>
-                                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Spin the Bottle</span>
+                              <div style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)', border: '1px solid #6366f1', padding: '1rem', borderRadius: '16px', minWidth: '240px', maxWidth: '300px', display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center', boxShadow: '0 4px 20px rgba(99,102,241,0.3)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', width: '100%', justifyContent: 'center' }}>
+                                  <span style={{ fontSize: '1.2rem' }}>🍾</span>
+                                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#e0e7ff' }}>Spin the Bottle</span>
+                                  {spinCount > 0 && <span style={{ background: '#4f46e5', borderRadius: '8px', padding: '1px 6px', fontSize: '0.7rem', color: '#c7d2fe' }}>Round {spinCount}</span>}
                                 </div>
                                 
                                 <div 
                                   style={{ 
-                                    fontSize: '3rem', 
+                                    fontSize: '3.5rem', 
                                     transition: 'transform 2s cubic-bezier(0.25, 0.1, 0.25, 1)',
-                                    transform: gameState.status === 'spinning' ? 'rotate(1080deg)' : (gameState.result === 'initiator' ? 'rotate(0deg)' : 'rotate(180deg)'),
-                                    margin: '0.75rem 0'
+                                    transform: gameState.status === 'spinning' ? 'rotate(1440deg)' : (gameState.result === 'initiator' ? 'rotate(0deg)' : 'rotate(180deg)'),
+                                    margin: '0.5rem 0',
+                                    filter: gameState.status === 'spinning' ? 'drop-shadow(0 0 8px #818cf8)' : 'none'
                                   }}
                                   className={gameState.status === 'spinning' ? 'bottle-spin-anim' : ''}
                                 >
                                   🍾
                                 </div>
 
-                                {gameState.status === 'spinning' ? (
-                                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    {isLastMessage ? (
-                                      <button 
-                                        className="btn btn-primary" 
-                                        style={{ width: '100%', fontSize: '0.75rem', padding: '0.4rem' }} 
-                                        onClick={() => handleSpinBottleClick(msg)}
-                                      >
-                                        Stop & Point
-                                      </button>
-                                    ) : (
-                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>Game expired</div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                                    👉 Points to:{' '} 
-                                    <span style={{ color: 'var(--bg-accent-teal)', fontSize: '0.85rem' }}>
-                                      {gameState.result === 'initiator' ? gameState.initiatorNickname : gameState.targetNickname}
-                                    </span>!
+                                {gameState.status === 'stopped' && (
+                                  <div style={{ textAlign: 'center', fontSize: '0.85rem', color: '#c7d2fe', fontWeight: 700, padding: '0.35rem 0.75rem', background: 'rgba(99,102,241,0.3)', borderRadius: '8px', width: '100%' }}>
+                                    👉 Points to: <span style={{ color: '#a5f3fc' }}>{gameState.result === 'initiator' ? gameState.initiatorNickname : gameState.targetNickname}</span>!
                                   </div>
                                 )}
+
+                                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                  {isMyTurn ? (
+                                    <button 
+                                      className="btn btn-primary" 
+                                      style={{ width: '100%', fontSize: '0.8rem', padding: '0.5rem', background: 'linear-gradient(90deg, #6366f1, #8b5cf6)' }} 
+                                      onClick={() => handleSpinBottleClick(msg)}
+                                    >
+                                      {gameState.status === 'stopped' ? '🔄 Spin Again (Your Turn)' : '🍾 Stop & Point'}
+                                    </button>
+                                  ) : (
+                                    <div style={{ fontSize: '0.75rem', color: '#a5b4fc', textAlign: 'center', fontStyle: 'italic', padding: '0.35rem' }}>
+                                      ⏳ Waiting for <strong>{currentTurnName}</strong> to spin...
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             );
                           })() : (
                             <>
                               {displayMediaType === 'image' && (
-                                <img 
-                                  src={displayMediaUrl} 
-                                  alt="Shared media" 
-                                  className="message-media-preview"
-                                  onClick={() => setLightboxImage(displayMediaUrl)}
-                                  style={{ cursor: 'pointer', maxWidth: '240px', borderRadius: '8px', marginBottom: '0.4rem' }}
-                                />
+                                isViewOnce ? (
+                                  // View-once image handler
+                                  msg.viewsRemaining != null && msg.viewsRemaining <= 0 ? (
+                                    <div style={{ 
+                                      padding: '0.75rem 1rem', 
+                                      background: 'rgba(99,102,241,0.15)', 
+                                      borderRadius: '8px', 
+                                      fontSize: '0.8rem', 
+                                      color: 'var(--text-muted)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem'
+                                    }}>
+                                      👁 Photo expired (view limit reached)
+                                    </div>
+                                  ) : (
+                                    !isOutgoing && msg.viewsRemaining != null ? (
+                                      // Recipient: show tap-to-view overlay
+                                      <div 
+                                        onClick={() => {
+                                          const chatKey = [user?.id, currentChat?.id].sort().join('-');
+                                          const newViews = (msg.viewsRemaining || 1) - 1;
+                                          socketRef.current?.emit('update-direct-message-views', { msgId: msg.id, chatKey, viewsRemaining: newViews });
+                                          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, viewsRemaining: newViews, content: newViews <= 0 ? '' : m.content } : m));
+                                        }}
+                                        style={{ 
+                                          position: 'relative', 
+                                          cursor: 'pointer', 
+                                          display: 'inline-block',
+                                          borderRadius: '8px',
+                                          overflow: 'hidden'
+                                        }}
+                                      >
+                                        <img 
+                                          src={displayMediaUrl} 
+                                          alt="View-once photo" 
+                                          className="message-media-preview"
+                                          style={{ maxWidth: '240px', borderRadius: '8px', display: 'block', filter: 'blur(8px)', marginBottom: '0.4rem' }}
+                                        />
+                                        <div style={{
+                                          position: 'absolute',
+                                          inset: 0,
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: 'rgba(0,0,0,0.55)',
+                                          color: '#fff',
+                                          fontSize: '0.8rem',
+                                          gap: '0.25rem',
+                                          borderRadius: '8px'
+                                        }}>
+                                          <span style={{ fontSize: '1.5rem' }}>👁</span>
+                                          <span>Tap to view ({msg.viewsRemaining} view{msg.viewsRemaining !== 1 ? 's' : ''} left)</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      // Sender: just show sent indicator
+                                      <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.15)', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                        👁 View-once photo sent ({msg.viewsRemaining ?? 1} view{(msg.viewsRemaining ?? 1) !== 1 ? 's' : ''} left)
+                                      </div>
+                                    )
+                                  )
+                                ) : (
+                                  <img 
+                                    src={displayMediaUrl} 
+                                    alt="Shared media" 
+                                    className="message-media-preview"
+                                    onClick={() => setLightboxImage(displayMediaUrl)}
+                                    style={{ cursor: 'pointer', maxWidth: '240px', borderRadius: '8px', marginBottom: '0.4rem' }}
+                                  />
+                                )
                               )}
                               {displayMediaType === 'audio' && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '180px', padding: '0.25rem 0' }}>
@@ -2988,7 +3075,20 @@ export default function App() {
                           <input 
                             type="file" 
                             accept="image/*" 
-                            onChange={handleImageSelect} 
+                            onChange={(e) => handleImageSelect(e, false)} 
+                            style={{ display: 'none' }} 
+                          />
+                        </label>
+                      )}
+
+                      {/* View-once image trigger (DM only) */}
+                      {token && currentChat?.type === 'dm' && (
+                        <label className="input-icon-btn" title="Send View-Once Photo (disappears after 1 view)" style={{ position: 'relative' }}>
+                          <span style={{ fontSize: '1rem', lineHeight: 1 }}>👁</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={(e) => handleImageSelect(e, true)} 
                             style={{ display: 'none' }} 
                           />
                         </label>
@@ -3118,8 +3218,21 @@ export default function App() {
                         placeholder="Type a message or share files..." 
                       />
 
-                      <button className="input-icon-btn btn-send" onClick={handleSendMessage} title="Send Message">
-                        <Send size={18} />
+                      {/* Quick Spin shortcut for DM */}
+                      {currentChat.type === 'dm' && token && (
+                        <button 
+                          className="input-icon-btn" 
+                          onClick={handleQuickSpin} 
+                          title="Quick Spin the Bottle"
+                          style={{ fontSize: '1rem', fontWeight: 600 }}
+                        >
+                          🍾
+                        </button>
+                      )}
+
+                      <button className="input-icon-btn btn-send" onClick={handleSendMessage} title="Send Message" style={{ display: 'flex', alignItems: 'center', gap: '4px', width: 'auto', padding: '0 14px', minWidth: '44px' }}>
+                        <Send size={16} />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Send</span>
                       </button>
                     </>
                   );
@@ -4165,15 +4278,7 @@ export default function App() {
                 </button>
               )}
 
-              {selectedProfileUser.id !== user?.id && selectedProfileUser.privacyMode === 'private' && getFriendshipState(selectedProfileUser) !== 'friends' ? (
-                <button 
-                  className="btn btn-secondary" 
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', opacity: 0.5, cursor: 'not-allowed' }}
-                  disabled
-                >
-                  <MessageSquare size={16} /> Private Account (Add Friend to DM)
-                </button>
-              ) : (
+              {selectedProfileUser.id !== user?.id && (
                 <button 
                   className="btn btn-primary" 
                   style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
@@ -4322,20 +4427,14 @@ export default function App() {
               </button>
               
               {activeUserPopup.id !== user?.id && (
-                activeUserPopup.privacyMode === 'private' && getFriendshipState(activeUserPopup) !== 'friends' ? (
-                  <button className="user-action-popup-item" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-                    <MessageSquare size={16} style={{ color: '#9ca3af' }} /> Private (Add Friend to DM)
-                  </button>
-                ) : (
-                  <button className="user-action-popup-item" onClick={() => {
-                    handleSelectChat(activeUserPopup, 'dm');
-                    setCurrentNav('chat');
-                    setActiveTab('dms');
-                    setActiveUserPopup(null);
-                  }}>
-                    <MessageSquare size={16} style={{ color: '#4b5563' }} /> Private Message
-                  </button>
-                )
+                <button className="user-action-popup-item" onClick={() => {
+                  handleSelectChat(activeUserPopup, 'dm');
+                  setCurrentNav('chat');
+                  setActiveTab('dms');
+                  setActiveUserPopup(null);
+                }}>
+                  <MessageSquare size={16} style={{ color: '#4b5563' }} /> Private Message
+                </button>
               )}
 
               {token && activeUserPopup.id !== user?.id && (() => {

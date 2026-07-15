@@ -254,9 +254,10 @@ export const db = {
       senderLevel: msg.senderLevel || 1,
       senderAnimal: msg.senderAnimal || null,
       recipientId: msg.recipientId || null,
-      type: msg.type || 'text', // 'text', 'image', 'audio'
+      type: msg.type || 'text', // 'text', 'image', 'audio', 'image_view_once'
       content: msg.content,
       read: false,
+      viewsRemaining: msg.viewsRemaining ?? null,
       createdAt: new Date().toISOString()
     };
     data.messages.push(newMessage);
@@ -327,6 +328,29 @@ export const db = {
       writeData(data);
     }
     return data.messages.filter(m => m.chatKey === chatKey);
+  },
+  updateMessageContent: (msgId, newContent) => {
+    const data = readData();
+    const index = data.messages.findIndex(m => m.id === msgId);
+    if (index !== -1) {
+      data.messages[index].content = newContent;
+      writeData(data);
+      return data.messages[index];
+    }
+    return null;
+  },
+  updateMessageViews: (msgId, viewsRemaining) => {
+    const data = readData();
+    const index = data.messages.findIndex(m => m.id === msgId);
+    if (index !== -1) {
+      data.messages[index].viewsRemaining = viewsRemaining;
+      if (viewsRemaining <= 0) {
+        data.messages[index].content = ''; // Delete image URL for privacy
+      }
+      writeData(data);
+      return data.messages[index];
+    }
+    return null;
   },
   getUnreadDmCounts: (userId) => {
     const data = readData();

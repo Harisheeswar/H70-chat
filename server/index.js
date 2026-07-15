@@ -701,7 +701,7 @@ io.on('connection', (socket) => {
   });
 
   // Send Direct Message (DM)
-  socket.on('send-direct-message', ({ recipientId, type, content }) => {
+  socket.on('send-direct-message', ({ recipientId, type, content, viewsRemaining }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
@@ -736,7 +736,8 @@ io.on('connection', (socket) => {
       senderAnimal: user.animal || null,
       recipientId,
       type,
-      content
+      content,
+      viewsRemaining: viewsRemaining ?? null
     });
 
     // Save message and emit to both parties
@@ -762,6 +763,46 @@ io.on('connection', (socket) => {
     const chatKey = [user.id, recipientId].sort().join('-');
     const messages = db.getMessages({ chatKey });
     socket.emit('direct-history', { recipientId, messages });
+  });
+
+  socket.on('update-direct-message', ({ msgId, chatKey, content }) => {
+    const user = activeSockets.get(socket.id);
+    if (!user) return;
+
+    const updated = db.updateMessageContent(msgId, content);
+    if (updated) {
+      const parts = chatKey.split('-');
+      const recipientId = parts.find(id => id !== user.id);
+      
+      socket.emit('direct-message-updated-live', { msgId, chatKey, content });
+      
+      if (recipientId) {
+        const recipientSocketId = activeUsers.get(recipientId);
+        if (recipientSocketId) {
+          io.to(recipientSocketId).emit('direct-message-updated-live', { msgId, chatKey, content });
+        }
+      }
+    }
+  });
+
+  socket.on('update-direct-message-views', ({ msgId, chatKey, viewsRemaining }) => {
+    const user = activeSockets.get(socket.id);
+    if (!user) return;
+
+    const updated = db.updateMessageViews(msgId, viewsRemaining);
+    if (updated) {
+      const parts = chatKey.split('-');
+      const recipientId = parts.find(id => id !== user.id);
+      
+      const broadcastData = { msgId, chatKey, viewsRemaining: updated.viewsRemaining, content: updated.content };
+      socket.emit('direct-message-views-updated-live', broadcastData);
+      if (recipientId) {
+        const recipientSocketId = activeUsers.get(recipientId);
+        if (recipientSocketId) {
+          io.to(recipientSocketId).emit('direct-message-views-updated-live', broadcastData);
+        }
+      }
+    }
   });
 
   // Mark direct messages as read

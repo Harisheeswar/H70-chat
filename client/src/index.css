@@ -738,11 +738,17 @@ input, button, textarea {
 .btn-send {
   background: var(--bg-accent);
   color: white;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  font-size: 1.1rem !important;
+  flex-shrink: 0;
 }
 
 .btn-send:hover {
   background: var(--bg-accent-hover);
   color: white;
+  transform: scale(1.08);
 }
 
 /* Audio Recording State */
