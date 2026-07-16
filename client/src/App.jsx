@@ -4289,10 +4289,9 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    // Standard Chat typing panel — two-row mobile-friendly layout
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' }}>
-                      {/* ROW 1: Text input + Send button */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <>
+                      {/* ROW 1: Text input + Send */}
+                      <div className="input-row-main">
                         <input 
                           type="text" 
                           className="chat-text-input" 
@@ -4300,42 +4299,32 @@ export default function App() {
                           onChange={(e) => handleTypingChange(e.target.value)} 
                           onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                           placeholder="Type a message..." 
-                          style={{ flex: 1, padding: '0.55rem 1rem', borderRadius: '24px', border: 'none', background: 'var(--input-bg)', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem', minWidth: 0 }}
                         />
-                        {/* Send button */}
                         <button 
-                          className="input-icon-btn btn-send" 
+                          className="btn-send-circle"
                           onClick={handleSendMessage} 
                           title="Send Message" 
-                          style={{ background: 'linear-gradient(135deg, #14b8a6, #7c3aed)', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', borderRadius: '50%', flexShrink: 0, width: '38px', height: '38px' }}
                         >
                           <Send size={18} />
                         </button>
                       </div>
 
-                      {/* ROW 2: Action buttons — always visible on mobile */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'space-between' }}>
+                      {/* ROW 2: Action buttons */}
+                      <div className="input-row-actions">
                         {/* Emoji */}
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <div style={{ position: 'relative' }}>
                           <button 
                             className="input-icon-btn" 
                             onClick={() => { setIsEmojiOpen(!isEmojiOpen); setIsGifOpen(false); }} 
-                            title="Insert Emoji"
-                            style={{ fontSize: '1.25rem', padding: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                            title="Emoji"
+                            style={{ fontSize: '1.2rem', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
                           >
                             😊
                           </button>
                           {isEmojiOpen && (
-                            <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '6px', display: 'flex', gap: '6px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', flexWrap: 'wrap', width: '220px' }}>
+                            <div style={{ position: 'absolute', bottom: '44px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px', zIndex: 100, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', width: '220px' }}>
                               {['😂', '❤️', '👍', '🔥', '😍', '🎉', '🚀', '😭', '👏', '👀'].map(emoji => (
-                                <span 
-                                  key={emoji} 
-                                  onClick={() => {
-                                    setMsgText(prev => prev + emoji);
-                                    setIsEmojiOpen(false);
-                                  }}
-                                  style={{ cursor: 'pointer', fontSize: '1.2rem', padding: '2px' }}
-                                >
+                                <span key={emoji} onClick={() => { setMsgText(prev => prev + emoji); setIsEmojiOpen(false); }} style={{ cursor: 'pointer', fontSize: '1.3rem' }}>
                                   {emoji}
                                 </span>
                               ))}
@@ -4343,24 +4332,12 @@ export default function App() {
                           )}
                         </div>
 
-                        {/* Voice Tune Filter dropdown */}
+                        {/* Voice Tune Filter */}
                         <select
                           value={selectedVoiceFilter}
                           onChange={(e) => setSelectedVoiceFilter(e.target.value)}
-                          style={{
-                            background: 'var(--bg-secondary)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '10px',
-                            fontSize: '0.7rem',
-                            padding: '0.2rem 0.3rem',
-                            outline: 'none',
-                            cursor: 'pointer',
-                            flex: 1,
-                            minWidth: 0,
-                            maxWidth: '110px'
-                          }}
-                          title="Voice Tune filter"
+                          className="voice-filter-select"
+                          title="Voice filter"
                         >
                           <option value="none">🎙️ Normal</option>
                           <option value="helium">🎈 Helium</option>
@@ -4376,37 +4353,27 @@ export default function App() {
                           <option value="autotune">🎵 AutoTune</option>
                         </select>
 
-                        {/* Microphone */}
-                        <button className="input-icon-btn" onClick={startRecording} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', flexShrink: 0 }} title="Record Voice Message">
+                        {/* Mic */}
+                        <button className="input-icon-btn" onClick={startRecording} title="Record Voice">
                           <Mic size={20} />
                         </button>
 
-                        {/* Camera take-photo */}
+                        {/* Camera */}
                         {token && (
-                          <button
-                            className="input-icon-btn"
-                            onClick={startWebcam}
-                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', flexShrink: 0 }}
-                            title="Take Photo with Camera"
-                          >
+                          <button className="input-icon-btn" onClick={startWebcam} title="Take Photo">
                             <Camera size={20} />
                           </button>
                         )}
 
-                        {/* Upload image from device */}
+                        {/* Upload */}
                         {token && (
-                          <label className="input-icon-btn" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', flexShrink: 0 }} title="Upload Image from Device">
+                          <label className="input-icon-btn" title="Upload Image" style={{ cursor: 'pointer' }}>
                             <Image size={20} />
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              onChange={(e) => handleImageSelect(e, false)} 
-                              style={{ display: 'none' }} 
-                            />
+                            <input type="file" accept="image/*" onChange={(e) => handleImageSelect(e, false)} style={{ display: 'none' }} />
                           </label>
                         )}
                       </div>
-                    </div>
+                    </>
                   );
                 })()}
               </div>
