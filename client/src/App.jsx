@@ -101,6 +101,12 @@ export default function App() {
   const [typingUsers, setTypingUsers] = useState([]);
   const [roomTypingUsers, setRoomTypingUsers] = useState({}); // { roomId: [{userId, nickname}] }
   const [openReactionPickerFor, setOpenReactionPickerFor] = useState(null);
+  const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState(false);
+  const [roomSegment, setRoomSegment] = useState('all'); // 'all' or 'my'
+  const [messageSegment, setMessageSegment] = useState('people'); // 'people' or 'rooms'
+  const [activeUserActionMenu, setActiveUserActionMenu] = useState(null);
+  const [activeCallPrompt, setActiveCallPrompt] = useState(null);
+  const [searchPeopleQuery, setSearchPeopleQuery] = useState('');
   const isTypingRef = useRef(false);
   // Voice Message States
   const [isRecording, setIsRecording] = useState(false);
@@ -2091,27 +2097,54 @@ export default function App() {
 
       {/* COLUMN 2: Middle List Sidebar (Guidelines, Channels list, Friends list) */}
       <div className="sidebar">
-        <div className="sidebar-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+        <div className="top-header-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '56px', boxSizing: 'border-box' }}>
           <button 
-            className="mobile-menu-btn" 
-            onClick={() => setMobileMenuOpen(true)}
-            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', display: 'none', alignItems: 'center', justifyContent: 'center' }}
+            className="header-icon-btn" 
+            onClick={() => setIsSettingsDrawerOpen(true)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             <Menu size={22} />
           </button>
-          <div className="app-brand" style={{ fontSize: '1.05rem', letterSpacing: '0.5px' }}>
-            {currentNav === 'chat' && activeTab === 'rooms' && 'Lounge Rooms'}
-            {currentNav === 'chat' && activeTab === 'dms' && 'Direct Chats'}
-            {currentNav === 'people' && 'People & Friends'}
-            {currentNav === 'games' && 'H70 Games'}
+          
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+            {currentNav === 'chat' && activeTab === 'rooms' && (
+              <div className="segmented-selector">
+                <button className={`segmented-btn ${roomSegment === 'all' ? 'active' : ''}`} onClick={() => setRoomSegment('all')}>
+                  All Rooms
+                </button>
+                <button className={`segmented-btn ${roomSegment === 'my' ? 'active' : ''}`} onClick={() => setRoomSegment('my')}>
+                  My Rooms
+                </button>
+              </div>
+            )}
+            {currentNav === 'chat' && activeTab === 'dms' && (
+              <div className="segmented-selector">
+                <button className={`segmented-btn ${messageSegment === 'people' ? 'active' : ''}`} onClick={() => setMessageSegment('people')}>
+                  People
+                </button>
+                <button className={`segmented-btn ${messageSegment === 'rooms' ? 'active' : ''}`} onClick={() => setMessageSegment('rooms')}>
+                  Rooms
+                </button>
+              </div>
+            )}
+            {currentNav === 'people' && (
+              <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>People</span>
+            )}
+            {currentNav === 'games' && (
+              <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Games Hub</span>
+            )}
           </div>
-          <button 
-            className="mobile-close-btn" 
-            onClick={() => setMobileMenuOpen(false)}
-            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', display: 'none', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <X size={20} />
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <button className="header-icon-btn" style={{ color: 'var(--text-primary)' }} onClick={() => alert("Search initiated...")}>
+              <Search size={18} />
+            </button>
+            {currentNav === 'chat' && activeTab === 'dms' && (
+              <button className="header-icon-btn" style={{ color: 'var(--text-primary)' }} onClick={() => setIsSettingsDrawerOpen(true)}>
+                <Edit size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* User XP progression block inside home tab */}
@@ -2203,23 +2236,10 @@ export default function App() {
             </div>
           )}
 
-          {currentNav === 'chat' && (
-            <>
-
-
-              {activeTab === 'rooms' && (
-                <div style={{ padding: '0.5rem 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.5rem 0.5rem' }}>
-                    <div className="section-title" style={{ margin: 0 }}>Rooms list</div>
-                    <button
-                      onClick={() => setIsCreateRoomOpen(true)}
-                      style={{ background: 'var(--bg-accent)', border: 'none', color: '#fff', borderRadius: '8px', padding: '4px 10px', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
-                      title="Create a new lounge"
-                    >
-                      <Plus size={12} /> Create Space
-                    </button>
-                  </div>
-
+            {currentNav === 'chat' && (
+              <>
+                {activeTab === 'rooms' && (
+                <div style={{ padding: '0.25rem 0' }}>
                   {/* Room Search Bar */}
                   <div style={{ padding: '0 0.5rem 0.5rem', position: 'relative' }}>
                     <input 
@@ -2227,264 +2247,303 @@ export default function App() {
                       placeholder="Search lounges..." 
                       value={roomSearchInput}
                       onChange={(e) => setRoomSearchInput(e.target.value)}
-                      style={{ width: '100%', padding: '0.45rem 0.75rem', paddingRight: '2rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.15)', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+                      style={{ width: '100%', padding: '0.45rem 0.75rem', paddingRight: '2rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
                     />
                     <Search size={14} style={{ position: 'absolute', right: '14px', top: '10px', opacity: 0.5 }} />
                   </div>
 
-                  {(() => {
-                    let joinedList = [];
-                    try {
-                      joinedList = JSON.parse(localStorage.getItem('h70_joined_rooms') || '[]');
-                    } catch (e) {}
+                  {roomSegment === 'all' && (
+                    <>
+                      {/* Random Chat Banner */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem', margin: '0.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>Random Chat</h3>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4, margin: '0 0 1rem' }}>
+                          We'll connect you to a completely random stranger. Enjoy the randomness. Make sure not to tell strangers personal stuff about you.
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <button 
+                            className="btn btn-secondary" 
+                            onClick={() => {
+                              const eligible = onlineUsers.filter(u => u.id !== user?.id);
+                              if (eligible.length > 0) {
+                                const randUser = eligible[Math.floor(Math.random() * eligible.length)];
+                                handleSelectChat(randUser, 'dm');
+                                setActiveTab('dms');
+                              } else {
+                                alert("No other users are currently online to start a random chat.");
+                              }
+                            }}
+                            style={{ padding: '0.45rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1.5px solid var(--bg-accent)', color: 'var(--bg-accent)', background: 'transparent', borderRadius: '24px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                          >
+                            🔀 START CHAT
+                          </button>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}>
+                            🟢 {onlineUsers.length * 13 + 128}
+                          </span>
+                        </div>
+                      </div>
 
-                    let mutedList = [];
-                    try {
-                      mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
-                    } catch (e) {}
+                      {/* Featured Rooms Label */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem 0.25rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>Group Chat - Featured</span>
+                        <button onClick={() => setIsCreateRoomOpen(true)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', padding: '2px' }} title="Create Space">
+                          <Plus size={16} />
+                        </button>
+                      </div>
 
-                    return rooms
-                      .filter(r => {
-                        const isDefault = r.id === 'general' || r.id === 'tech' || r.id === 'gaming';
-                        const isJoined = joinedList.includes(r.id);
-                        const matchesSearch = r.name.toLowerCase().includes(roomSearchInput.toLowerCase());
-                        return (isDefault || isJoined) && matchesSearch;
-                      })
-                      .map(room => {
-                        const isMuted = mutedList.includes(room.id);
-                        return (
+                      {/* Alert Info Container */}
+                      <div style={{ background: 'var(--bg-secondary)', borderLeft: '4px solid var(--bg-accent)', borderRadius: '4px', padding: '0.75rem 1rem', margin: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                          ℹ️ This page brings you some of the popular chat rooms around the world. Want more? Discover them on your own!
+                        </div>
+                      </div>
+
+                      {/* Rooms Loop */}
+                      {(() => {
+                        let mutedList = [];
+                        try {
+                          mutedList = JSON.parse(localStorage.getItem('h70_muted_rooms') || '[]');
+                        } catch (e) {}
+
+                        return rooms
+                          .filter(r => r.name.toLowerCase().includes(roomSearchInput.toLowerCase()))
+                          .map(room => {
+                            const isMuted = mutedList.includes(room.id);
+                            return (
+                              <div 
+                                 key={room.id} 
+                                 className="room-featured-card"
+                                 style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem', margin: '0.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+                               >
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                                   <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>{room.name}</h4>
+                                   <span className="room-count-pill" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                                     {roomUnreadCounts[room.id] > 0 ? roomUnreadCounts[room.id] * 5 + 32 : 12}
+                                   </span>
+                                 </div>
+                                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.5rem', lineHeight: 1.4 }}>
+                                   {room.description || 'Welcome to this public H70 lounge room! Be friendly and follow the chat rules.'}
+                                 </p>
+                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '0.75rem', borderLeft: '2px solid var(--bg-accent)', paddingLeft: '6px' }}>
+                                   Topic - Talk whatever you want unless it doesn't hurt anyone. Report bugs to support@h70.in
+                                 </div>
+                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+                                   <button 
+                                     className="btn btn-primary" 
+                                     onClick={() => handleSelectChat(room, 'room')}
+                                     style={{ padding: '0.4rem 1rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700 }}
+                                    >
+                                     OPEN
+                                   </button>
+                                   <div style={{ display: 'flex', gap: '0.65rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                                     <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => alert("Subscribed to lounge successfully!")} title="Join Room">
+                                       📥
+                                     </button>
+                                     <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => {
+                                       navigator.clipboard.writeText(window.location.origin + `/r/${room.id}`);
+                                       alert("Room share link copied!");
+                                     }} title="Copy Link">
+                                       🔗
+                                     </button>
+                                     <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => alert(`Lounge: ${room.name}\nCreator: H70 Platform`)} title="Lounge Details">
+                                       ℹ️
+                                     </button>
+                                     <span style={{ color: '#10b981' }} title="Verified Lounge">✓</span>
+                                   </div>
+                                 </div>
+                              </div>
+                            );
+                          });
+                      })()}
+                    </>
+                  )}
+
+                  {roomSegment === 'my' && (
+                    <>
+                      {/* Your Rooms Section Info */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem 0.25rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>Your Rooms</span>
+                      </div>
+
+                      <div style={{ background: 'var(--bg-secondary)', borderLeft: '4px solid var(--bg-accent)', borderRadius: '4px', padding: '0.75rem 1rem', margin: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                          ℹ️ This page has tools that allow you to create, share & manage your chat rooms.
+                        </div>
+                      </div>
+
+                      <div style={{ padding: '0 0.5rem 0.5rem' }}>
+                        <button 
+                          className="btn btn-secondary" 
+                          onClick={() => setIsCreateRoomOpen(true)}
+                          style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                        >
+                          CREATE CHAT ROOM
+                        </button>
+                      </div>
+
+                      {/* Created custom rooms list */}
+                      {(() => {
+                        const customCreated = rooms.filter(r => r.creatorId === user?.id || r.admins?.includes(user?.id));
+                        if (customCreated.length === 0) {
+                          return (
+                            <div style={{ textAlign: 'center', padding: '2rem 1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              No custom rooms created yet.
+                            </div>
+                          );
+                        }
+                        return customCreated.map(room => (
                           <div 
                              key={room.id} 
-                             className={`list-item ${currentChat?.type === 'room' && currentChat.id === room.id ? 'active' : ''}`}
-                             onClick={() => handleSelectChat(room, 'room')}
+                             className="room-featured-card"
+                             style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem', margin: '0.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
                            >
-                             {room.avatar ? (
-                               <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                                 <img src={room.avatar} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                             <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>{room.name}</h4>
+                             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem', lineHeight: 1.4 }}>
+                               {room.description || 'No description available or this room is too random to describe.'}
+                             </p>
+                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+                               <button 
+                                 className="btn btn-primary" 
+                                 onClick={() => handleSelectChat(room, 'room')}
+                                 style={{ padding: '0.4rem 1rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700 }}
+                                >
+                                 JOIN CHAT
+                               </button>
+                               <div style={{ display: 'flex', gap: '0.65rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                                 <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => {
+                                   navigator.clipboard.writeText(window.location.origin + `/r/${room.id}`);
+                                   alert("Room share link copied!");
+                                 }} title="Copy Link">
+                                   🔗
+                                 </button>
+                                 <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => alert(`Lounge: ${room.name}\nCreator ID: ${room.creatorId}`)} title="Lounge Details">
+                                   ℹ️
+                                 </button>
+                                 <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => {
+                                   setBioInput(room.name);
+                                   setSelectedProfileUser({ nickname: room.name, bio: room.description || 'Custom lounge room', id: room.id, isRoom: true });
+                                 }} title="Manage Room">
+                                   👤
+                                 </button>
                                </div>
-                             ) : (
-                               <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                                 #
-                               </div>
-                             )}
-                             <div className="list-item-info">
-                              <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                  {room.name}
-                                  {isMuted && <span title="Room muted" style={{ fontSize: '0.75rem', opacity: 0.65 }}>🔇</span>}
-                                </span>
-                                {roomUnreadCounts[room.id] > 0 && (
-                                  <span className="room-unread-badge" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
-                                    {roomUnreadCounts[room.id]}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                             </div>
                           </div>
-                        );
-                      });
-                  })()}
+                        ));
+                      })()}
+                    </>
+                  )}
                 </div>
               )}
 
               {activeTab === 'dms' && (
-                <div style={{ padding: '0.5rem 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.5rem 0.5rem' }}>
-                    <div className="section-title" style={{ margin: 0 }}>Conversations</div>
-                    {token && (
-                      <button
-                        onClick={() => { setCurrentNav('people'); setPeopleTab('add'); setMobileMenuOpen(false); }}
-                        style={{ background: 'var(--bg-accent)', border: 'none', color: '#fff', borderRadius: '8px', padding: '4px 10px', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
-                        title="Add a new friend"
-                      >
-                        <UserPlus size={12} /> Add Friend
-                      </button>
-                    )}
-                  </div>
-                  {(() => {
-                    const friendsDms = dmContacts.filter(c => user?.friends?.includes(c.id) && !c.id.startsWith('guest_'));
-                    const notFriendsDms = dmContacts.filter(c => !user?.friends?.includes(c.id) && !c.id.startsWith('guest_'));
-                    const guestDms = dmContacts.filter(c => c.id.startsWith('guest_'));
-
-                    return (
-                      <div style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}>
-                        {/* Friends Conversations */}
-                        {friendsDms.length > 0 && (
-                          <>
-                            <div className="section-subtitle" style={{ padding: '0.4rem 0.5rem', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px' }}>
-                              👥 Friends
-                            </div>
-                            {friendsDms.map(u => (
-                              <div 
-                                key={u.id} 
-                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''} ${unreadCounts[u.id] > 0 ? 'unread-highlight' : ''}`}
-                                onClick={() => handleSelectChat(u, 'dm')}
-                              >
-                                <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-                                  {u.avatar && token ? (
-                                    <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  ) : (
-                                    u.nickname.substring(0, 2).toUpperCase()
-                                  )}
-                                  <div className="online-dot" style={{ width: '6px', height: '6px', background: u.isOnline ? 'var(--success)' : '#777', boxShadow: u.isOnline ? '0 0 6px var(--success)' : 'none' }}></div>
-                                </div>
-                                <div className="list-item-info">
-                                  <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                      {u.nickname} {token && u.animal ? ' ' + u.animal.split(' ')[0] : ''}
-                                      {token && (
-                                        <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
-                                          L{u.level}
-                                        </span>
-                                      )}
-                                    </span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                      {unreadCounts[u.id] > 0 && (
-                                        <span className="unread-badge-sidebar" style={{ background: '#ef4444', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
-                                          {unreadCounts[u.id]}
-                                        </span>
-                                      )}
-                                      {token && (
-                                        <button 
-                                          onClick={(e) => handleClearChat(e, u.id)} 
-                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                          title="Clear chat history"
-                                        >
-                                          🗑️
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="list-item-sub">
-                                    {u.isOnline ? (u.bio || 'Chat with me!') : `Offline`}
-                                  </div>
-                                </div>
+                <div style={{ padding: '0.25rem 0' }}>
+                  {messageSegment === 'people' ? (
+                    <div style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}>
+                      {/* PENDING CONVERSATIONS */}
+                      {(() => {
+                        const guestDms = dmContacts.filter(c => c.id.startsWith('guest_') || !user?.friends?.includes(c.id));
+                        if (guestDms.length > 0) {
+                          return (
+                            <>
+                              <div className="section-subtitle" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', textTransform: 'uppercase', color: '#3b82f6', fontWeight: 800, letterSpacing: '0.5px' }}>
+                                PENDING CONVERSATIONS
                               </div>
-                            ))}
-                          </>
-                        )}
-
-                        {/* Not Friends Conversations */}
-                        {notFriendsDms.length > 0 && (
-                          <>
-                            <div className="section-subtitle" style={{ padding: '0.4rem 0.5rem', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px', marginTop: '0.5rem' }}>
-                              🌐 Not Friends
-                            </div>
-                            {notFriendsDms.map(u => (
-                              <div 
-                                key={u.id} 
-                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''} ${unreadCounts[u.id] > 0 ? 'unread-highlight' : ''}`}
-                                onClick={() => handleSelectChat(u, 'dm')}
-                              >
-                                <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-                                  {u.avatar && token ? (
-                                    <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  ) : (
-                                    u.nickname.substring(0, 2).toUpperCase()
-                                  )}
-                                  <div className="online-dot" style={{ width: '6px', height: '6px', background: u.isOnline ? 'var(--success)' : '#777', boxShadow: u.isOnline ? '0 0 6px var(--success)' : 'none' }}></div>
-                                </div>
-                                <div className="list-item-info">
-                                  <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                      {u.nickname} {token && u.animal ? ' ' + u.animal.split(' ')[0] : ''}
-                                      {token && (
-                                        <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
-                                          L{u.level}
-                                        </span>
-                                      )}
+                              {guestDms.map(u => (
+                                <div 
+                                  key={u.id} 
+                                  className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                  onClick={() => handleSelectChat(u, 'dm')}
+                                  style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                                >
+                                  <div className="avatar-circle" style={{ width: '36px', height: '36px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 'bold' }}>
+                                    {u.nickname.substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <div style={{ flex: 1, textAlign: 'left' }}>
+                                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.isOnline ? 'Online' : 'Offline'}</div>
+                                  </div>
+                                  {unreadCounts[u.id] > 0 && (
+                                    <span style={{ background: '#3b82f6', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px' }}>
+                                      {unreadCounts[u.id]}
                                     </span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                      {unreadCounts[u.id] > 0 && (
-                                        <span className="unread-badge-sidebar" style={{ background: '#ef4444', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
-                                          {unreadCounts[u.id]}
-                                        </span>
-                                      )}
-                                      {token && (
-                                        <button 
-                                          onClick={(e) => handleClearChat(e, u.id)} 
-                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                          title="Clear chat history"
-                                        >
-                                          🗑️
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="list-item-sub">
-                                    {u.isOnline ? (u.bio || 'Chat with me!') : `Offline`}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </>
-                        )}
-
-                        {/* Guests (Unregistered) */}
-                        {guestDms.length > 0 && (
-                          <>
-                            <div className="section-subtitle" style={{ padding: '0.4rem 0.5rem', fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px', marginTop: '0.5rem' }}>
-                              👤 Guests (Unregistered)
-                            </div>
-                            {guestDms.map(u => (
-                              <div 
-                                key={u.id} 
-                                className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''} ${unreadCounts[u.id] > 0 ? 'unread-highlight' : ''}`}
-                                onClick={() => handleSelectChat(u, 'dm')}
-                              >
-                                <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-                                  {u.avatar && token ? (
-                                    <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  ) : (
-                                    u.nickname.substring(0, 2).toUpperCase()
                                   )}
-                                  <div className="online-dot" style={{ width: '6px', height: '6px', background: u.isOnline ? 'var(--success)' : '#777', boxShadow: u.isOnline ? '0 0 6px var(--success)' : 'none' }}></div>
                                 </div>
-                                <div className="list-item-info">
-                                  <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                      {u.nickname} {token && u.animal ? ' ' + u.animal.split(' ')[0] : ''}
-                                      {token && (
-                                        <span className={`level-badge ${getLevelTier(u.level || 1).class}`} style={{ fontSize: '0.6rem' }}>
-                                          L{u.level}
-                                        </span>
-                                      )}
-                                    </span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                      {unreadCounts[u.id] > 0 && (
-                                        <span className="unread-badge-sidebar" style={{ background: '#ef4444', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
-                                          {unreadCounts[u.id]}
-                                        </span>
-                                      )}
-                                      {token && (
-                                        <button 
-                                          onClick={(e) => handleClearChat(e, u.id)} 
-                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                          title="Clear chat history"
-                                        >
-                                          🗑️
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="list-item-sub">
-                                    {u.isOnline ? (u.bio || 'Chat with me!') : `Offline`}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </>
-                        )}
+                              ))}
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
 
-                        {dmContacts.length === 0 && (
-                          <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                            <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>💬</div>
-                            No conversations yet.<br/>Start a DM by clicking on a user in a room!
-                          </div>
-                        )}
+                      {/* YOUR CONVERSATIONS */}
+                      {(() => {
+                        const friendsDms = dmContacts.filter(c => user?.friends?.includes(c.id) && !c.id.startsWith('guest_'));
+                        return (
+                          <>
+                            <div className="section-subtitle" style={{ padding: '0.8rem 0.75rem 0.4rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 800, letterSpacing: '0.5px' }}>
+                              YOUR CONVERSATIONS
+                            </div>
+                            {friendsDms.length === 0 ? (
+                              <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                No active friend chats. Start one from the People tab!
+                              </div>
+                            ) : (
+                              friendsDms.map(u => (
+                                <div 
+                                  key={u.id} 
+                                  className={`list-item ${currentChat?.type === 'dm' && currentChat.id === u.id ? 'active' : ''}`}
+                                  onClick={() => handleSelectChat(u, 'dm')}
+                                  style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                                >
+                                  <div className="avatar-circle" style={{ width: '36px', height: '36px', fontSize: '0.8rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 'bold' }}>
+                                    {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <div style={{ flex: 1, textAlign: 'left' }}>
+                                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.isOnline ? 'Online' : 'Offline'}</div>
+                                  </div>
+                                  {unreadCounts[u.id] > 0 && (
+                                    <span style={{ background: '#3b82f6', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px' }}>
+                                      {unreadCounts[u.id]}
+                                    </span>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}>
+                      <div className="section-subtitle" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 800, letterSpacing: '0.5px' }}>
+                        ACTIVE ROOMS
                       </div>
-                    );
-                  })()}
+                      {rooms.map(room => (
+                        <div 
+                          key={room.id} 
+                          className={`list-item ${currentChat?.type === 'room' && currentChat.id === room.id ? 'active' : ''}`}
+                          onClick={() => handleSelectChat(room, 'room')}
+                          style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                        >
+                          <div className="avatar-circle" style={{ width: '36px', height: '36px', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontWeight: 'bold' }}>
+                            #
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{room.name}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
+                              {room.description || 'Lounge room conversation'}
+                            </div>
+                          </div>
+                          {roomUnreadCounts[room.id] > 0 && (
+                            <span style={{ background: '#3b82f6', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px' }}>
+                              {roomUnreadCounts[room.id]}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2524,42 +2583,147 @@ export default function App() {
           )}
 
           {currentNav === 'people' && (
-            <div style={{ padding: '0.5rem 0' }}>
-              <div className="section-title">Filters</div>
-              <div 
-                className={`list-item ${peopleTab === 'friends' ? 'active' : ''}`}
-                onClick={() => setPeopleTab('friends')}
-              >
-                <div className="list-item-info">
-                  <div className="list-item-title">Your Friends</div>
+                <div style={{ padding: '0.25rem 0' }}>
+                  {/* Search Bar */}
+                  <div style={{ padding: '0 0.5rem 0.5rem', position: 'relative' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Search people..." 
+                      value={searchPeopleQuery}
+                      onChange={(e) => setSearchPeopleQuery(e.target.value)}
+                      style={{ width: '100%', padding: '0.45rem 0.75rem', paddingRight: '2rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }}
+                    />
+                    <Search size={14} style={{ position: 'absolute', right: '14px', top: '10px', opacity: 0.5 }} />
+                  </div>
+
+                  {/* Sub-header Filter Tabs */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.25rem 0.5rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                    <button 
+                      onClick={() => setPeopleTab('friends')}
+                      style={{ background: 'transparent', border: 'none', fontSize: '0.78rem', fontWeight: peopleTab === 'friends' ? 800 : 500, color: peopleTab === 'friends' ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px' }}
+                    >
+                      YOUR FRIENDS
+                    </button>
+                    <button 
+                      onClick={() => setPeopleTab('requests')}
+                      style={{ background: 'transparent', border: 'none', fontSize: '0.78rem', fontWeight: peopleTab === 'requests' ? 800 : 500, color: peopleTab === 'requests' ? '#3b82f6' : 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px' }}
+                    >
+                      FRIEND REQUESTS [{user?.friendRequests?.length || 0}]
+                    </button>
+                    <button 
+                      onClick={() => setPeopleTab('blocked')}
+                      style={{ background: 'transparent', border: 'none', fontSize: '0.78rem', fontWeight: peopleTab === 'blocked' ? 800 : 500, color: peopleTab === 'blocked' ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px' }}
+                    >
+                      BLOCKED PEOPLE
+                    </button>
+                    <button 
+                      onClick={() => setPeopleTab('add')}
+                      style={{ background: 'transparent', border: 'none', fontSize: '0.78rem', fontWeight: peopleTab === 'add' ? 800 : 500, color: peopleTab === 'add' ? 'var(--text-primary)' : 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px' }}
+                    >
+                      ADD FRIEND
+                    </button>
+                  </div>
+
+                  {/* Hint text */}
+                  {peopleTab === 'requests' && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'left' }}>
+                      Only accept friend requests from people you know.
+                    </div>
+                  )}
+
+                  {/* Filter Content */}
+                  <div style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '0.25rem 0' }}>
+                    {peopleTab === 'friends' && (() => {
+                      const friendsList = onlineUsers.filter(u => user?.friends?.includes(u.id) && u.nickname.toLowerCase().includes(searchPeopleQuery.toLowerCase()));
+                      if (friendsList.length === 0) {
+                        return <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No friends found.</div>;
+                      }
+                      return friendsList.map(u => (
+                        <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                          <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#3b82f6', color: '#fff', fontWeight: 'bold' }}>
+                            {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <button style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', padding: 0 }} onClick={() => handleSelectChat(u, 'dm')} title="Chat">💬</button>
+                            <span style={{ color: '#10b981' }}>✓</span>
+                            <button style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#ef4444', padding: 0 }} onClick={() => handleRemoveFriend(u.id)} title="Remove Friend">✕</button>
+                            <button style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => setActiveUserActionMenu(u)}>⋮</button>
+                          </div>
+                        </div>
+                      ));
+                    })()}
+
+                    {peopleTab === 'requests' && (() => {
+                      const requestsList = onlineUsers.filter(u => user?.friendRequests?.includes(u.id));
+                      if (requestsList.length === 0) {
+                        return <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No pending friend requests.</div>;
+                      }
+                      return requestsList.map(u => (
+                        <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                          <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#3b82f6', color: '#fff', fontWeight: 'bold' }}>
+                            {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <button style={{ background: 'transparent', border: 'none', fontSize: '0.95rem', cursor: 'pointer', color: '#10b981', padding: 0 }} onClick={() => handleAcceptFriend(u.id)} title="Accept">✓</button>
+                            <button style={{ background: 'transparent', border: 'none', fontSize: '0.95rem', cursor: 'pointer', color: '#ef4444', padding: 0 }} onClick={() => handleDeclineFriend(u.id)} title="Decline">✕</button>
+                            <button style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => setActiveUserActionMenu(u)}>⋮</button>
+                          </div>
+                        </div>
+                      ));
+                    })()}
+
+                    {peopleTab === 'blocked' && (() => {
+                      const blockedList = onlineUsers.filter(u => user?.blocked?.includes(u.id));
+                      if (blockedList.length === 0) {
+                        return <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No blocked users.</div>;
+                      }
+                      return blockedList.map(u => (
+                        <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                          <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#777', color: '#fff', fontWeight: 'bold' }}>
+                            {u.nickname.substring(0, 1).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <button className="btn btn-secondary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.72rem' }} onClick={() => handleUnblockUser(u.id)}>Unblock</button>
+                          </div>
+                        </div>
+                      ));
+                    })()}
+
+                    {peopleTab === 'add' && (
+                      <div style={{ padding: '1rem' }}>
+                        <form onSubmit={(e) => {
+                          e.preventDefault();
+                          const target = e.target.elements.addName.value.trim();
+                          if (target) {
+                            handleSendFriendRequestByName(target);
+                            e.target.reset();
+                          }
+                        }}>
+                          <input 
+                            type="text" 
+                            name="addName"
+                            placeholder="Enter friend's nickname..." 
+                            style={{ width: '100%', padding: '0.65rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none', marginBottom: '0.75rem' }}
+                            required
+                          />
+                          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700 }}>
+                            SEND FRIEND REQUEST
+                          </button>
+                        </form>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div 
-                className={`list-item ${peopleTab === 'requests' ? 'active' : ''}`}
-                onClick={() => setPeopleTab('requests')}
-              >
-                <div className="list-item-info">
-                  <div className="list-item-title">Friend Requests</div>
-                </div>
-              </div>
-              <div 
-                className={`list-item ${peopleTab === 'blocked' ? 'active' : ''}`}
-                onClick={() => setPeopleTab('blocked')}
-              >
-                <div className="list-item-info">
-                  <div className="list-item-title">Blocked People</div>
-                </div>
-              </div>
-              <div 
-                className={`list-item ${peopleTab === 'add' ? 'active' : ''}`}
-                onClick={() => setPeopleTab('add')}
-              >
-                <div className="list-item-info">
-                  <div className="list-item-title">Add Friend</div>
-                </div>
-              </div>
-            </div>
-          )}
+              )}
         </div>
       </div>
 
@@ -3636,44 +3800,13 @@ export default function App() {
                   ) : (
                     // Standard Chat typing panel
                     <>
-                      {/* File Selector trigger */}
-                      {token && (
-                        <label className="input-icon-btn" title="Upload Image">
-                          <Image size={20} />
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={(e) => handleImageSelect(e, false)} 
-                            style={{ display: 'none' }} 
-                          />
-                        </label>
-                      )}
-
-                      {/* View-once image trigger (DM only) */}
-                      {token && currentChat?.type === 'dm' && (
-                        <label className="input-icon-btn" title="Send View-Once Photo (disappears after 1 view)" style={{ position: 'relative' }}>
-                          <span style={{ fontSize: '1rem', lineHeight: 1 }}>👁</span>
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={(e) => handleImageSelect(e, true)} 
-                            style={{ display: 'none' }} 
-                          />
-                        </label>
-                      )}
-
-                       {/* Micro recorder trigger */}
-                      <button className="input-icon-btn" onClick={startRecording} title="Record Voice Message">
-                        <Mic size={20} />
-                      </button>
-
-                      {/* Emoji trigger */}
+                      {/* Emoji trigger on the left */}
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <button 
                           className="input-icon-btn" 
-                          onClick={() => { setIsEmojiOpen(!isEmojiOpen); setIsGifOpen(false); setIsGameSelectorOpen(false); }} 
+                          onClick={() => { setIsEmojiOpen(!isEmojiOpen); setIsGifOpen(false); }} 
                           title="Insert Emoji"
-                          style={{ fontSize: '1.25rem', padding: '2px' }}
+                          style={{ fontSize: '1.25rem', padding: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }}
                         >
                           😊
                         </button>
@@ -3686,8 +3819,7 @@ export default function App() {
                                   setMsgText(prev => prev + emoji);
                                   setIsEmojiOpen(false);
                                 }}
-                                style={{ cursor: 'pointer', fontSize: '1.2rem', padding: '2px', transition: 'transform 0.1s' }}
-                                className="emoji-hover-scale"
+                                style={{ cursor: 'pointer', fontSize: '1.2rem', padding: '2px' }}
                               >
                                 {emoji}
                               </span>
@@ -3696,111 +3828,43 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* GIF trigger */}
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <button 
-                          className="input-icon-btn" 
-                          onClick={() => { setIsGifOpen(!isGifOpen); setIsEmojiOpen(false); setIsGameSelectorOpen(false); }} 
-                          title="Send GIF"
-                          style={{ fontSize: '0.85rem', fontWeight: 'bold', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', width: '36px', height: '36px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        >
-                          GIF
-                        </button>
-                        {isGifOpen && (
-                          <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '8px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', width: '260px', maxHeight: '200px', overflowY: 'auto' }}>
-                            {[
-                              { name: "Laughing", url: "https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif" },
-                              { name: "Thumbs Up", url: "https://media.giphy.com/media/3o7absbD71SJJ43AlG/giphy.gif" },
-                              { name: "Wave", url: "https://media.giphy.com/media/3o7TKUM3Y5MgKyKqJy/giphy.gif" },
-                              { name: "Crying", url: "https://media.giphy.com/media/2WxWlkKWUsQ5W/giphy.gif" },
-                              { name: "OMG", url: "https://media.giphy.com/media/3o7527pa7qs9kCG78A/giphy.gif" },
-                              { name: "Dance", url: "https://media.giphy.com/media/l3V0lsG3Js1ZKCrII/giphy.gif" },
-                              { name: "Yes!", url: "https://media.giphy.com/media/3o6UB3LJgrAjylZcoM/giphy.gif" },
-                              { name: "Facepalm", url: "https://media.giphy.com/media/3og0INyMrrC67vc1cA/giphy.gif" },
-                              { name: "Party", url: "https://media.giphy.com/media/l2JhORT5IFnj6ioko/giphy.gif" }
-                            ].map(gif => (
-                              <img 
-                                key={gif.url} 
-                                src={gif.url} 
-                                alt={gif.name} 
-                                onClick={() => {
-                                  if (currentChat.type === 'room') {
-                                    socketRef.current?.emit('send-room-message', { roomId: currentChat.id, type: 'image', content: gif.url });
-                                  } else {
-                                    socketRef.current?.emit('send-direct-message', { recipientId: currentChat.id, type: 'image', content: gif.url });
-                                  }
-                                  setIsGifOpen(false);
-                                }}
-                                style={{ width: '100%', height: '50px', objectFit: 'cover', borderRadius: '6px', cursor: 'pointer', border: '1px solid var(--border-color)' }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Game selector trigger */}
-                      {currentChat.type === 'dm' && token && (
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                          <button 
-                            className="input-icon-btn" 
-                            onClick={() => { setIsGameSelectorOpen(!isGameSelectorOpen); setIsEmojiOpen(false); setIsGifOpen(false); }} 
-                            title="Play In-Chat Game"
-                          >
-                            <Gamepad2 size={20} />
-                          </button>
-                          {isGameSelectorOpen && (
-                            <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', width: '160px' }}>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.35rem' }} 
-                                onClick={() => { handleStartGame(); setIsGameSelectorOpen(false); }}
-                              >
-                                ❌ Tic-Tac-Toe
-                              </button>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.35rem' }} 
-                                onClick={() => { handleStartTruthOrDare(); setIsGameSelectorOpen(false); }}
-                              >
-                                ❓ Truth or Dare
-                              </button>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.35rem' }} 
-                                onClick={() => { handleStartSpinBottle(); setIsGameSelectorOpen(false); }}
-                              >
-                                🍾 Spin the Bottle
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
+                      {/* Text Input in the center */}
                       <input 
-
                         type="text" 
                         className="chat-text-input" 
                         value={msgText} 
                         onChange={(e) => handleTypingChange(e.target.value)} 
                         onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                        placeholder="Type a message or share files..." 
+                        placeholder="Type a message..." 
+                        style={{ flex: 1, padding: '0.55rem 1rem', borderRadius: '24px', border: 'none', background: 'var(--input-bg)', color: 'var(--text-primary)', outline: 'none', fontSize: '0.85rem' }}
                       />
 
-                      {/* Quick Spin shortcut for DM */}
-                      {currentChat.type === 'dm' && token && (
-                        <button 
-                          className="input-icon-btn" 
-                          onClick={handleQuickSpin} 
-                          title="Quick Spin the Bottle"
-                          style={{ fontSize: '1rem', fontWeight: 600 }}
-                        >
-                          🍾
-                        </button>
+                      {/* Microphone trigger on the right */}
+                      <button className="input-icon-btn" onClick={startRecording} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }} title="Record Voice Message">
+                        <Mic size={20} />
+                      </button>
+
+                      {/* Camera upload trigger on the right */}
+                      {token && (
+                        <label className="input-icon-btn" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }} title="Upload Image">
+                          <Image size={20} />
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={(e) => handleImageSelect(e, false)} 
+                            style={{ display: 'none' }} 
+                          />
+                        </label>
                       )}
 
-                      <button className="input-icon-btn btn-send" onClick={handleSendMessage} title="Send Message" style={{ display: 'flex', alignItems: 'center', gap: '4px', width: 'auto', padding: '0 14px', minWidth: '44px' }}>
-                        <Send size={16} />
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Send</span>
+                      {/* Send button (Paper airplane arrow) on the far right */}
+                      <button 
+                        className="input-icon-btn btn-send" 
+                        onClick={handleSendMessage} 
+                        title="Send Message" 
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--bg-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}
+                      >
+                        <Send size={20} />
                       </button>
                     </>
                   );
@@ -5405,6 +5469,276 @@ export default function App() {
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', wordBreak: 'break-word', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {activeToast.content}
+          </div>
+        </div>
+      )}
+
+      {/* 7. Settings Sliding Drawer Panel (Screenshot 4) */}
+      {isSettingsDrawerOpen && (
+        <div className="settings-drawer-backdrop" onClick={() => setIsSettingsDrawerOpen(false)}>
+          <div className="settings-drawer-content" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-drawer-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div className="avatar-circle" style={{ width: '48px', height: '48px', overflow: 'hidden', border: '2px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 'bold' }}>
+                  {user?.avatar ? <img src={user.avatar} alt="Me" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : user?.nickname?.substring(0, 2).toUpperCase()}
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>{user?.nickname || 'Guest'}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{user?.bio || 'Active participant'}</div>
+                </div>
+              </div>
+              <button className="settings-drawer-edit-btn" onClick={() => { setIsSettingsDrawerOpen(false); setBioInput(user?.bio || ''); setSelectedProfileUser(user); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <Edit size={18} />
+              </button>
+            </div>
+
+            <div className="settings-drawer-body">
+              <div className="settings-drawer-item" onClick={() => { setIsSettingsDrawerOpen(false); setBioInput(user?.bio || ''); setSelectedProfileUser(user); }}>
+                <User size={18} />
+                <span>Profile</span>
+              </div>
+              <div className="settings-drawer-item" onClick={() => { setIsSettingsDrawerOpen(false); handleLogout(); }}>
+                <LogOut size={18} />
+                <span>Logout</span>
+              </div>
+              <div className="settings-drawer-item" onClick={() => alert("H70 Chat Platform v1.0.0 - Premium Secure Lounges & Games.")}>
+                <Info size={18} />
+                <span>About H70</span>
+              </div>
+              <div className="settings-drawer-item" onClick={() => {
+                navigator.clipboard.writeText(window.location.origin);
+                alert("App link copied to clipboard!");
+              }}>
+                <Share size={18} />
+                <span>Share</span>
+              </div>
+              <div className="settings-drawer-item" style={{ justifyContent: 'space-between', cursor: 'default' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Award size={18} />
+                  <span>Dark Theme</span>
+                </div>
+                <label className="switch-toggle">
+                  <input type="checkbox" checked={theme === 'dark'} onChange={() => {
+                    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+                    setTheme(nextTheme);
+                    localStorage.setItem('h70_theme', nextTheme);
+                    document.documentElement.className = nextTheme + '-theme';
+                  }} />
+                  <span className="switch-slider"></span>
+                </label>
+              </div>
+              <div className="settings-drawer-item" onClick={() => alert("VIP Status unlocked! Welcome to premium club.")}>
+                <Award size={18} style={{ color: '#f59e0b' }} />
+                <span>Be VIP</span>
+              </div>
+              <div className="settings-drawer-item" onClick={() => { setIsSettingsDrawerOpen(false); setAuthScreen('login'); }}>
+                <Users size={18} />
+                <span>Switch Accounts</span>
+              </div>
+            </div>
+
+            <div className="settings-drawer-footer">
+              <button className="settings-drawer-close-btn" onClick={() => setIsSettingsDrawerOpen(false)}>
+                <X size={16} /> Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Mobile Bottom Navigation Bar (Screenshot 3) */}
+      <div className="bottom-nav-bar">
+        <button 
+          className={`bottom-nav-btn ${currentNav === 'games' && selectedGame ? 'active' : ''}`}
+          onClick={() => {
+            setCurrentNav('games');
+            setSelectedGame({ id: 'snake', name: 'Snake Game', emoji: '🐍' });
+          }}
+        >
+          <Gamepad2 size={20} />
+          <span>Mini Games</span>
+        </button>
+        
+        <button 
+          className={`bottom-nav-btn ${currentNav === 'chat' && activeTab === 'rooms' ? 'active' : ''}`}
+          onClick={() => {
+            setCurrentNav('chat');
+            setActiveTab('rooms');
+            setCurrentChat(null);
+          }}
+        >
+          <DoorOpen size={20} />
+          <span>Rooms</span>
+        </button>
+        
+        <button 
+          className={`bottom-nav-btn ${currentNav === 'chat' && activeTab === 'dms' ? 'active' : ''}`}
+          onClick={() => {
+            setCurrentNav('chat');
+            setActiveTab('dms');
+            setCurrentChat(null);
+          }}
+          style={{ position: 'relative' }}
+        >
+          <MessageCircle size={20} />
+          <span>Messages</span>
+          {totalUnread > 0 && (
+            <span className="bottom-nav-badge">{totalUnread}</span>
+          )}
+        </button>
+        
+        <button 
+          className={`bottom-nav-btn ${currentNav === 'people' ? 'active' : ''}`}
+          onClick={() => {
+            setCurrentNav('people');
+          }}
+        >
+          <Contact size={20} />
+          <span>People</span>
+        </button>
+        
+        <button 
+          className={`bottom-nav-btn ${currentNav === 'games' && !selectedGame ? 'active' : ''}`}
+          onClick={() => {
+            setCurrentNav('games');
+            setSelectedGame(null);
+          }}
+        >
+          <Dices size={20} />
+          <span>Games Hub</span>
+        </button>
+      </div>
+
+      {/* 9. Contact Options Bottom Sheet Dialog (Screenshot 2) */}
+      {activeUserActionMenu && (
+        <div className="bottom-sheet-backdrop" onClick={() => setActiveUserActionMenu(null)}>
+          <div className="bottom-sheet-content animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="bottom-sheet-header">
+              <span className="bottom-sheet-title">{activeUserActionMenu.nickname}</span>
+              <button className="bottom-sheet-close" onClick={() => setActiveUserActionMenu(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="bottom-sheet-body">
+              <div className="bottom-sheet-item" onClick={() => {
+                setActiveUserActionMenu(null);
+                setBioInput(activeUserActionMenu.bio || '');
+                setSelectedProfileUser(activeUserActionMenu);
+              }}>
+                <Info size={18} style={{ color: 'var(--text-secondary)' }} />
+                <span>View Profile</span>
+              </div>
+              <div className="bottom-sheet-item" onClick={() => {
+                setActiveUserActionMenu(null);
+                handleSelectChat(activeUserActionMenu, 'dm');
+              }}>
+                <MessageCircle size={18} style={{ color: 'var(--text-secondary)' }} />
+                <span>Private Message</span>
+              </div>
+              <div className="bottom-sheet-item" onClick={() => {
+                setActiveUserActionMenu(null);
+                handleSendFriendRequest(activeUserActionMenu.id);
+              }}>
+                <User size={18} style={{ color: 'var(--text-secondary)' }} />
+                <span>Add Friend</span>
+              </div>
+              <div className="bottom-sheet-item" onClick={() => {
+                if (confirm(`Block ${activeUserActionMenu.nickname}?`)) {
+                  setActiveUserActionMenu(null);
+                  handleBlockUser(activeUserActionMenu.id);
+                }
+              }}>
+                <Ban size={18} style={{ color: '#ef4444' }} />
+                <span style={{ color: '#ef4444' }}>Block User</span>
+              </div>
+              <div className="bottom-sheet-item" onClick={() => {
+                setActiveUserActionMenu(null);
+                alert("Thank you! Report submitted successfully.");
+              }}>
+                <AlertTriangle size={18} style={{ color: '#ef4444' }} />
+                <span style={{ color: '#ef4444' }}>Report User</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 10. Call Option Bottom Sheet Dialog (Screenshot 5) */}
+      {activeCallPrompt && (
+        <div className="bottom-sheet-backdrop" onClick={() => setActiveCallPrompt(null)}>
+          <div className="bottom-sheet-content animate-slide-up" style={{ padding: '1.5rem' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', textAlign: 'left' }}>
+              Call {activeCallPrompt.nickname}?
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+              <button 
+                onClick={() => {
+                  const targetUser = activeCallPrompt;
+                  setActiveCallPrompt(null);
+                  startPrivateCall(targetUser.id, targetUser.nickname, true);
+                }}
+                style={{ 
+                  width: '100%', 
+                  padding: '0.85rem', 
+                  borderRadius: '8px', 
+                  border: '1.5px solid #ec4899', 
+                  background: '#fff', 
+                  color: '#ec4899', 
+                  fontWeight: 700, 
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <Video size={18} /> VIDEO CALL
+              </button>
+              <button 
+                onClick={() => {
+                  const targetUser = activeCallPrompt;
+                  setActiveCallPrompt(null);
+                  startPrivateCall(targetUser.id, targetUser.nickname, false);
+                }}
+                style={{ 
+                  width: '100%', 
+                  padding: '0.85rem', 
+                  borderRadius: '8px', 
+                  border: '1.5px solid #10b981', 
+                  background: '#fff', 
+                  color: '#10b981', 
+                  fontWeight: 700, 
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <Phone size={18} /> AUDIO CALL
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setActiveCallPrompt(null)}
+                style={{ 
+                  width: '100%', 
+                  padding: '0.85rem', 
+                  borderRadius: '8px', 
+                  border: 'none', 
+                  background: 'transparent', 
+                  color: '#10b981', 
+                  fontWeight: 700, 
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  textAlign: 'right',
+                  marginTop: '0.5rem'
+                }}
+              >
+                CANCEL
+              </button>
+            </div>
           </div>
         </div>
       )}
