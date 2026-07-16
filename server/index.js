@@ -429,12 +429,14 @@ app.post('/api/report', authenticateToken, (req, res) => {
 
 // 15. Settings: Update User Settings
 app.post('/api/profile/settings', authenticateToken, (req, res) => {
-  const { privacyMode, soundLevel, notificationsEnabled, animal } = req.body;
+  const { privacyMode, soundLevel, notificationsEnabled, animal, glowStyle, glowColor } = req.body;
   const updates = {};
   if (privacyMode !== undefined) updates.privacyMode = privacyMode;
   if (soundLevel !== undefined) updates.soundLevel = parseInt(soundLevel);
   if (notificationsEnabled !== undefined) updates.notificationsEnabled = !!notificationsEnabled;
   if (animal !== undefined) updates.animal = animal;
+  if (glowStyle !== undefined) updates.glowStyle = glowStyle;
+  if (glowColor !== undefined) updates.glowColor = glowColor;
   
   const updated = db.updateUser(req.user.id, updates);
   
@@ -445,6 +447,8 @@ app.post('/api/profile/settings', authenticateToken, (req, res) => {
       if (soundLevel !== undefined) activeUser.soundLevel = parseInt(soundLevel);
       if (notificationsEnabled !== undefined) activeUser.notificationsEnabled = !!notificationsEnabled;
       if (animal !== undefined) activeUser.animal = animal;
+      if (glowStyle !== undefined) activeUser.glowStyle = glowStyle;
+      if (glowColor !== undefined) activeUser.glowColor = glowColor;
     }
   }
   sendOnlineUsersList();
@@ -951,6 +955,20 @@ io.on('connection', (socket) => {
     if (targetSocketId) {
       io.to(targetSocketId).emit('call-hungup');
     }
+  });
+
+  // Relay video call filter change to the other party (DM call)
+  socket.on('call-video-filter', ({ to, filter }) => {
+    const targetSocketId = activeUsers.get(to);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call-video-filter', { filter, socketId: socket.id });
+    }
+  });
+
+  // Relay video call filter change to all other participants (Room call)
+  socket.on('room-call-video-filter', ({ roomId, filter }) => {
+    const callRoomName = `call-${roomId}`;
+    socket.to(callRoomName).emit('room-call-video-filter', { socketId: socket.id, filter });
   });
 
   // Room Calls (Mesh Signaling Support)

@@ -5,16 +5,16 @@ import {
   Video, Phone, PhoneOff, MicOff, VideoOff, Edit, X, Compass, Award, 
   BookOpen, LogOut, CheckCircle, Mail, Key, ShieldAlert,
   Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu, Gamepad2,
-  DoorOpen, MessageCircle, Contact, Dices, Share
+  DoorOpen, MessageCircle, Contact, Dices, Share, Camera, Sliders
 } from 'lucide-react';
 
 import { ANIMALS_LIST } from './animals';
 
 // Level Tiers Helper
 const getLevelTier = (level) => {
-  if (level >= 20) return { name: 'Diamond', class: 'level-diamond' };
+  if (level >= 20) return { name: 'Diamond', class: 'level-diamond badge-neon-blue' };
   if (level >= 15) return { name: 'Platinum', class: 'level-platinum' };
-  if (level >= 10) return { name: 'Gold', class: 'level-gold' };
+  if (level >= 10) return { name: 'Gold', class: 'level-gold badge-sparkle' };
   if (level >= 5) return { name: 'Silver', class: 'level-silver' };
   return { name: 'Bronze', class: 'level-bronze' };
 };
@@ -134,6 +134,45 @@ export default function App() {
   const roomCallStreamsRef = useRef({}); // socketId -> MediaStream
   const roomCallPCsRef = useRef({}); // socketId -> RTCPeerConnection
 
+  // Premium Customization & Filters States
+  const [chatWallpapers, setChatWallpapers] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('h70_wallpapers') || '{}');
+    } catch(e) {
+      return {};
+    }
+  });
+  const [isWallpaperSheetOpen, setIsWallpaperSheetOpen] = useState(false);
+  const [selectedVoiceFilter, setSelectedVoiceFilter] = useState('none');
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [selectedImageFilter, setSelectedImageFilter] = useState('none');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [selectedImageFile, setSelectedImageFile] = useState(null);
+  const [isViewOnceImage, setIsViewOnceImage] = useState(false);
+
+  // Webcam Capture States
+  const [isWebcamOpen, setIsWebcamOpen] = useState(false);
+  const webcamVideoRef = useRef(null);
+  const webcamStreamRef = useRef(null);
+
+  // Video Call Filter States
+  const [localVideoFilter, setLocalVideoFilter] = useState('none');
+  const [remoteVideoFilter, setRemoteVideoFilter] = useState('none');
+  const [roomCallVideoFilters, setRoomCallVideoFilters] = useState({}); // socketId -> filter
+  const [isCallFilterOpen, setIsCallFilterOpen] = useState(false);
+
+  // Helper for applying custom profile glow styles
+  const getAvatarGlowStyle = (uObj) => {
+    if (!uObj) return { className: '', style: {} };
+    const style = uObj.glowStyle || 'none';
+    const color = uObj.glowColor || '#14b8a6';
+    if (style === 'none') return { className: '', style: {} };
+    return {
+      className: `glow-${style}`,
+      style: style === 'pulse' ? { '--glow-color': color, border: `2px solid ${color}` } : {}
+    };
+  };
+
   // Refs
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -149,6 +188,64 @@ export default function App() {
   useEffect(() => {
     currentChatRef.current = currentChat;
   }, [currentChat]);
+
+  // Speaking state detection
+  const [speakingParticipants, setSpeakingParticipants] = useState({});
+  useEffect(() => {
+    // Avoid running on browsers/environments without AudioContext
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    
+    const audioCtx = new AudioContextClass();
+    const analysers = {};
+
+    const monitorStream = (stream, key) => {
+      if (!stream || stream.getAudioTracks().length === 0) return;
+      try {
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analysers[key] = analyser;
+      } catch (e) {
+        console.warn("Failed to create AudioContext analyser source:", e);
+      }
+    };
+
+    if (localStream) {
+      monitorStream(localStream, 'local');
+    }
+    
+    roomCallParticipants.forEach(p => {
+      if (p.stream && p.socketId) {
+        monitorStream(p.stream, p.socketId);
+      }
+    });
+
+    const dataArray = new Uint8Array(128);
+    const intervalId = setInterval(() => {
+      const newSpeaking = {};
+      Object.entries(analysers).forEach(([key, analyser]) => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        if (avg > 15) { // threshold volume trigger
+          newSpeaking[key] = true;
+        }
+      });
+      setSpeakingParticipants(newSpeaking);
+    }, 150);
+
+    return () => {
+      clearInterval(intervalId);
+      try {
+        audioCtx.close();
+      } catch (e) {}
+    };
+  }, [localStream, roomCallParticipants]);
 
   useEffect(() => {
     setTypingUsers([]);
@@ -681,6 +778,14 @@ export default function App() {
 
     socket.on('call-hungup', () => {
       cleanupCall();
+    });
+
+    // Video call filter sync events
+    socket.on('call-video-filter', ({ filter }) => {
+      setRemoteVideoFilter(filter || 'none');
+    });
+    socket.on('room-call-video-filter', ({ socketId, filter }) => {
+      setRoomCallVideoFilters(prev => ({ ...prev, [socketId]: filter || 'none' }));
     });
 
     // Room Multi-peer WebRTC events
@@ -1247,24 +1352,35 @@ export default function App() {
     // Turn-based: only the current turn holder can spin
     const currentTurn = gameState.currentTurn || gameState.initiatorId;
     if (currentTurn !== user?.id) return; // Not your turn!
+    if (gameState.status === 'spinning') return; // Already spinning!
 
-    const rand = Math.random() < 0.5 ? 'initiator' : 'target';
-    // After spin, give next turn to the other player
-    const nextTurn = user?.id === gameState.initiatorId ? gameState.targetId : gameState.initiatorId;
-    const updatedState = {
+    // 1. Set state to spinning and broadcast
+    const spinningState = {
       ...gameState,
-      status: 'stopped',
-      result: rand,
-      currentTurn: nextTurn,
-      spinCount: (gameState.spinCount || 0) + 1
+      status: 'spinning'
     };
 
     const chatKey = [user?.id, currentChat?.id].sort().join('-');
-    const newContent = JSON.stringify(updatedState);
+    const spinningContent = JSON.stringify(spinningState);
 
-    // Update existing message in-place (no duplicate)
-    socketRef.current?.emit('update-direct-message', { msgId: msg.id, chatKey, content: newContent });
-    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: newContent } : m));
+    socketRef.current?.emit('update-direct-message', { msgId: msg.id, chatKey, content: spinningContent });
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: spinningContent } : m));
+
+    // 2. Wait 1500ms for rotation loop animation, then pick result & stop
+    setTimeout(() => {
+      const rand = Math.random() < 0.5 ? 'initiator' : 'target';
+      const nextTurn = user?.id === gameState.initiatorId ? gameState.targetId : gameState.initiatorId;
+      const finalState = {
+        ...gameState,
+        status: 'stopped',
+        result: rand,
+        currentTurn: nextTurn,
+        spinCount: (gameState.spinCount || 0) + 1
+      };
+      const finalContent = JSON.stringify(finalState);
+      socketRef.current?.emit('update-direct-message', { msgId: msg.id, chatKey, content: finalContent });
+      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: finalContent } : m));
+    }, 1500);
   };
 
   // Quick-spin: let one button instantly trigger spin if active spin message exists
@@ -1300,50 +1416,358 @@ export default function App() {
     }
   };
 
-  // Image Upload trigger
-  const handleImageSelect = async (e, viewOnce = false) => {
+  // Image Upload trigger with filter preview modal
+  const applyFilterToCanvas = (ctx, width, height, filterType) => {
+    if (filterType === 'none') ctx.filter = 'none';
+    else if (filterType === 'sepia') ctx.filter = 'sepia(0.85)';
+    else if (filterType === 'grayscale') ctx.filter = 'grayscale(1)';
+    else if (filterType === 'invert') ctx.filter = 'invert(0.9)';
+    else if (filterType === 'cyberpunk') ctx.filter = 'saturate(2) hue-rotate(290deg) contrast(1.1)';
+    else if (filterType === 'vintage') ctx.filter = 'sepia(0.4) contrast(0.85) brightness(1.05)';
+    else if (filterType === 'polaroid') ctx.filter = 'contrast(1.2) saturate(0.9) brightness(1.1)';
+    else if (filterType === 'gothic') ctx.filter = 'contrast(1.4) brightness(0.7) grayscale(0.6)';
+    else if (filterType === 'popart') ctx.filter = 'hue-rotate(90deg) saturate(1.8) contrast(1.2)';
+    else if (filterType === 'neongold') ctx.filter = 'sepia(0.5) hue-rotate(10deg) saturate(2.5) brightness(1.1)';
+    else if (filterType === 'duotoneteal') ctx.filter = 'grayscale(1) sepia(0.5) hue-rotate(130deg) saturate(3)';
+    else if (filterType === 'dreamy') ctx.filter = 'blur(0.5px) saturate(1.2) brightness(1.05)';
+    else if (filterType === 'highsat') ctx.filter = 'saturate(2.2) contrast(1.1)';
+    else if (filterType === 'retrocool') ctx.filter = 'hue-rotate(180deg) saturate(1.4)';
+  };
+
+  const handleImageSelect = (e, viewOnce = false) => {
     const file = e.target.files[0];
     if (!file || !currentChat) return;
 
-    const formData = new FormData();
-    formData.append('media', file);
+    setSelectedImageFile(file);
+    setIsViewOnceImage(viewOnce);
+    setSelectedImageFilter('none');
 
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-
-      if (currentChat.type === 'room') {
-        socketRef.current?.emit('send-room-message', {
-          roomId: currentChat.id,
-          type: 'image',
-          content: data.url
-        });
-      } else {
-        socketRef.current?.emit('send-direct-message', {
-          recipientId: currentChat.id,
-          type: viewOnce ? 'image_view_once' : 'image',
-          content: data.url,
-          viewsRemaining: viewOnce ? 1 : null
-        });
-      }
-    } catch (err) {
-      alert('Image upload failed: ' + err.message);
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreviewUrl(reader.result);
+      setIsFilterModalOpen(true);
+    };
+    reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  // Webcam capture helpers
+  const startWebcam = async () => {
+    if (!currentChat) return;
+    setIsWebcamOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      webcamStreamRef.current = stream;
+      // Attach stream after modal mounts
+      setTimeout(() => {
+        if (webcamVideoRef.current) {
+          webcamVideoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (err) {
+      console.error('Webcam access error:', err);
+      alert('Could not access camera: ' + err.message);
+      setIsWebcamOpen(false);
+    }
+  };
+
+  const stopWebcam = () => {
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(t => t.stop());
+      webcamStreamRef.current = null;
+    }
+    setIsWebcamOpen(false);
+  };
+
+  const captureWebcamPhoto = () => {
+    const video = webcamVideoRef.current;
+    if (!video) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    fetch(dataUrl)
+      .then(r => r.blob())
+      .then(blob => {
+        const file = new File([blob], 'webcam_snapshot.jpg', { type: 'image/jpeg' });
+        setSelectedImageFile(file);
+        setIsViewOnceImage(false);
+        setSelectedImageFilter('none');
+        setImagePreviewUrl(dataUrl);
+        setIsFilterModalOpen(true);
+        stopWebcam();
+      });
+  };
+
+  // Video call filter change
+  const changeLocalVideoFilter = (filter) => {
+    setLocalVideoFilter(filter);
+    if (callState?.status === 'connected') {
+      socketRef.current?.emit('call-video-filter', { to: callState.from || callState.to, filter });
+    } else if (isInRoomCall && currentChat?.type === 'room') {
+      socketRef.current?.emit('room-call-video-filter', { roomId: currentChat.id, filter });
+    }
+  };
+
+  const handleSendFilteredImage = () => {
+    if (!selectedImageFile || !imagePreviewUrl) return;
+
+    const img = new window.Image();
+    img.src = imagePreviewUrl;
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+
+      applyFilterToCanvas(ctx, canvas.width, canvas.height, selectedImageFilter);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          alert('Failed to process image filters.');
+          return;
+        }
+
+        const filteredFile = new File([blob], selectedImageFile.name, { type: selectedImageFile.type || 'image/jpeg' });
+        const formData = new FormData();
+        formData.append('media', filteredFile);
+
+        setIsFilterModalOpen(false);
+        setImagePreviewUrl(null);
+        setSelectedImageFile(null);
+
+        try {
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+          if (currentChat.type === 'room') {
+            socketRef.current?.emit('send-room-message', {
+              roomId: currentChat.id,
+              type: 'image',
+              content: data.url
+            });
+          } else {
+            socketRef.current?.emit('send-direct-message', {
+              recipientId: currentChat.id,
+              type: isViewOnceImage ? 'image_view_once' : 'image',
+              content: data.url,
+              viewsRemaining: isViewOnceImage ? 1 : null
+            });
+          }
+        } catch (err) {
+          alert('Image upload failed: ' + err.message);
+        }
+      }, selectedImageFile.type || 'image/jpeg', 0.9);
+    };
   };
 
   // ----------------------------------------------------
   // VOICE MESSAGE RECORDING API
   // ----------------------------------------------------
+  const activeAudioCtxRef = useRef(null);
+
+  const applyAudioFilters = (audioCtx, source, destination, filterType) => {
+    let lastNode = source;
+
+    if (filterType === 'helium') {
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.value = 1200;
+      filter.Q.value = 8;
+      lastNode.connect(filter);
+      lastNode = filter;
+    } 
+    else if (filterType === 'monster') {
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 350;
+      filter.Q.value = 8;
+      
+      const shaper = audioCtx.createWaveShaper();
+      const makeDistortionCurve = (amount = 30) => {
+        const k = amount;
+        const n_samples = 44100;
+        const curve = new Float32Array(n_samples);
+        const deg = Math.PI / 180;
+        for (let i = 0; i < n_samples; ++i) {
+          const x = (i * 2) / n_samples - 1;
+          curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+        }
+        return curve;
+      };
+      shaper.curve = makeDistortionCurve(30);
+      shaper.oversample = '4x';
+
+      lastNode.connect(filter);
+      filter.connect(shaper);
+      lastNode = shaper;
+    }
+    else if (filterType === 'robot') {
+      const delay = audioCtx.createDelay();
+      delay.delayTime.value = 0.015;
+      const feedback = audioCtx.createGain();
+      feedback.gain.value = 0.6;
+
+      lastNode.connect(delay);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      
+      const merger = audioCtx.createGain();
+      lastNode.connect(merger);
+      delay.connect(merger);
+      lastNode = merger;
+    }
+    else if (filterType === 'echo') {
+      const delay = audioCtx.createDelay();
+      delay.delayTime.value = 0.35;
+      const feedback = audioCtx.createGain();
+      feedback.gain.value = 0.45;
+
+      lastNode.connect(delay);
+      delay.connect(feedback);
+      feedback.connect(delay);
+
+      const merger = audioCtx.createGain();
+      lastNode.connect(merger);
+      delay.connect(merger);
+      lastNode = merger;
+    }
+    else if (filterType === 'alien') {
+      const ringMod = audioCtx.createGain();
+      ringMod.gain.value = 1.0;
+      
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = 65;
+      
+      osc.connect(ringMod.gain);
+      osc.start();
+      
+      lastNode.connect(ringMod);
+      lastNode = ringMod;
+    }
+    else if (filterType === 'underwater') {
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 400;
+      filter.Q.value = 4;
+      lastNode.connect(filter);
+      lastNode = filter;
+    }
+    else if (filterType === 'megaphone') {
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1000;
+      filter.Q.value = 3.0;
+
+      const shaper = audioCtx.createWaveShaper();
+      const makeMegaphoneCurve = () => {
+        const curve = new Float32Array(44100);
+        for (let i = 0; i < 44100; i++) {
+          const x = (i * 2) / 44100 - 1;
+          curve[i] = x * 1.8;
+        }
+        return curve;
+      };
+      shaper.curve = makeMegaphoneCurve();
+      
+      lastNode.connect(filter);
+      filter.connect(shaper);
+      lastNode = shaper;
+    }
+    else if (filterType === 'telephone') {
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1300;
+      filter.Q.value = 5.0;
+      lastNode.connect(filter);
+      lastNode = filter;
+    }
+    else if (filterType === 'radio') {
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 750;
+      
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 3500;
+
+      lastNode.connect(hp);
+      hp.connect(lp);
+      lastNode = lp;
+    }
+    else if (filterType === 'vibrato') {
+      const delay = audioCtx.createDelay();
+      delay.delayTime.value = 0.01;
+      
+      const lfo = audioCtx.createOscillator();
+      lfo.frequency.value = 8;
+      
+      const lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 0.003;
+      
+      lfo.connect(lfoGain);
+      lfoGain.connect(delay.delayTime);
+      lfo.start();
+
+      lastNode.connect(delay);
+      lastNode = delay;
+    }
+    else if (filterType === 'autotune') {
+      const filter1 = audioCtx.createBiquadFilter();
+      filter1.type = 'peaking';
+      filter1.frequency.value = 440;
+      filter1.Q.value = 12.0;
+      filter1.gain.value = 15;
+
+      const filter2 = audioCtx.createBiquadFilter();
+      filter2.type = 'peaking';
+      filter2.frequency.value = 554;
+      filter2.Q.value = 12.0;
+      filter2.gain.value = 15;
+
+      const filter3 = audioCtx.createBiquadFilter();
+      filter3.type = 'peaking';
+      filter3.frequency.value = 659;
+      filter3.Q.value = 12.0;
+      filter3.gain.value = 15;
+
+      lastNode.connect(filter1);
+      filter1.connect(filter2);
+      filter2.connect(filter3);
+      lastNode = filter3;
+    }
+
+    lastNode.connect(destination);
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream);
+
+      const audioCtxClass = window.AudioContext || window.webkitAudioContext;
+      let recorderStream = stream;
+      
+      if (selectedVoiceFilter && selectedVoiceFilter !== 'none' && audioCtxClass) {
+        const audioCtx = new audioCtxClass();
+        activeAudioCtxRef.current = audioCtx;
+        const micSource = audioCtx.createMediaStreamSource(stream);
+        const destNode = audioCtx.createMediaStreamDestination();
+        
+        applyAudioFilters(audioCtx, micSource, destNode, selectedVoiceFilter);
+        recorderStream = destNode.stream;
+      }
+
+      const mediaRecorder = new MediaRecorder(recorderStream);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -1354,7 +1778,15 @@ export default function App() {
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        stream.getTracks().forEach(track => track.stop()); // Release mic
+        
+        // Release raw mic stream track resources
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Close Web Audio Context if active
+        if (activeAudioCtxRef.current) {
+          activeAudioCtxRef.current.close().catch(() => {});
+          activeAudioCtxRef.current = null;
+        }
 
         if (audioChunksRef.current.length === 0) return;
 
@@ -1406,7 +1838,7 @@ export default function App() {
     setIsRecording(false);
 
     if (!shouldSend) {
-      audioChunksRef.current = []; // Empty segments to cancel
+      audioChunksRef.current = [];
     }
     mediaRecorderRef.current.stop();
   };
@@ -2558,14 +2990,19 @@ export default function App() {
                         setActiveUserPopup(u);
                       }}
                     >
-                      <div className="avatar-circle" style={{ width: '36px', height: '36px', fontSize: '0.85rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-                        {u.avatar ? (
-                          <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          u.nickname.substring(0, 2).toUpperCase()
-                        )}
-                        <div className="online-dot" style={{ background: 'var(--success)', boxShadow: '0 0 6px var(--success)' }}></div>
-                      </div>
+                      {(() => {
+                        const glow = getAvatarGlowStyle(u);
+                        return (
+                          <div className={`avatar-circle ${glow.className}`} style={{ width: '36px', height: '36px', fontSize: '0.85rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', ...glow.style }}>
+                            {u.avatar ? (
+                              <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              u.nickname.substring(0, 2).toUpperCase()
+                            )}
+                            <div className="online-dot" style={{ background: 'var(--success)', boxShadow: '0 0 6px var(--success)' }}></div>
+                          </div>
+                        );
+                      })()}
                       <div className="list-item-info">
                         <div className="list-item-title">
                            {u.nickname} {u.animal ? ' ' + u.animal.split(' ')[0] : ''} {u.id === user?.id && '(You)'}
@@ -3318,6 +3755,16 @@ export default function App() {
                     </button>
                   )}
                   
+                  {/* Change Wallpaper button */}
+                  <button 
+                    className="action-btn"
+                    onClick={() => setIsWallpaperSheetOpen(true)}
+                    title="Change Chat Wallpaper"
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <Image size={18} />
+                  </button>
+
                   {/* Room/User info drawer trigger */}
                   <button 
                     className="action-btn"
@@ -3339,8 +3786,32 @@ export default function App() {
               </div>
 
               {/* Chat messages stream */}
-              <div className="messages-list">
-                {messages.map((msg, i) => {
+              {(() => {
+                const getWallpaperBackgroundStyle = () => {
+                  if (!currentChat) return {};
+                  const wp = chatWallpapers[currentChat.id] || 'default';
+                  if (wp === 'default') return {};
+                  if (wp === 'sunset') return { background: 'linear-gradient(135deg, #ff7e5f, #feb47b)', backgroundAttachment: 'fixed' };
+                  if (wp === 'midnight') return { background: 'linear-gradient(135deg, #09090e, #111124, #1a1a36)', backgroundAttachment: 'fixed' };
+                  if (wp === 'lavender') return { background: 'linear-gradient(135deg, #f3e8ff, #fae8ff, #fdf4ff)', backgroundAttachment: 'fixed' };
+                  if (wp === 'grey') return { background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb, #d1d5db)', backgroundAttachment: 'fixed' };
+                  if (wp === 'cyberpunk') return { background: 'linear-gradient(135deg, #120c1f, #1f1137, #0f071a)', backgroundAttachment: 'fixed' };
+                  
+                  if (wp.startsWith('http') || wp.startsWith('data:image')) {
+                    return { 
+                      backgroundImage: `url(${wp})`, 
+                      backgroundSize: 'cover', 
+                      backgroundPosition: 'center', 
+                      backgroundRepeat: 'no-repeat',
+                      backgroundAttachment: 'fixed'
+                    };
+                  }
+                  return {};
+                };
+
+                return (
+                  <div className="messages-list" style={getWallpaperBackgroundStyle()}>
+                    {messages.map((msg, i) => {
                   const isOutgoing = msg.senderId === user?.id;
                   const showAvatar = i === 0 || messages[i - 1].senderId !== msg.senderId;
                   const sender = onlineUsers.find(u => u.id === msg.senderId);
@@ -3354,17 +3825,22 @@ export default function App() {
                   return (
                     <div key={msg.id || i} className={`message-wrapper ${isOutgoing ? 'outgoing' : ''}`}>
                       {!isOutgoing && showAvatar && (
-                        <div 
-                          className="avatar-circle" 
-                          style={{ width: '32px', height: '32px', fontSize: '0.8rem', cursor: 'pointer', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-                          onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
-                        >
-                          {sender?.avatar && token ? (
-                            <img src={sender.avatar} alt={msg.senderNickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ fontSize: '0.8rem' }}>👤</div>
-                          )}
-                        </div>
+                        (() => {
+                          const glow = getAvatarGlowStyle(sender);
+                          return (
+                            <div 
+                              className={`avatar-circle ${glow.className}`} 
+                              style={{ width: '32px', height: '32px', fontSize: '0.8rem', cursor: 'pointer', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', ...glow.style }}
+                              onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
+                            >
+                              {sender?.avatar && token ? (
+                                <img src={sender.avatar} alt={msg.senderNickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                <div style={{ fontSize: '0.8rem' }}>👤</div>
+                              )}
+                            </div>
+                          );
+                        })()
                       )}
                       {!isOutgoing && !showAvatar && <div style={{ width: '32px' }}></div>}
 
@@ -3542,9 +4018,10 @@ export default function App() {
                                     <button 
                                       className="btn btn-primary" 
                                       style={{ width: '100%', fontSize: '0.8rem', padding: '0.5rem', background: 'linear-gradient(90deg, #6366f1, #8b5cf6)' }} 
+                                      disabled={gameState.status === 'spinning'}
                                       onClick={() => handleSpinBottleClick(msg)}
                                     >
-                                      {gameState.status === 'stopped' ? '🔄 Spin Again (Your Turn)' : '🍾 Stop & Point'}
+                                      {gameState.status === 'spinning' ? '🍾 Spinning...' : (gameState.status === 'stopped' ? '🔄 Spin Again (Your Turn)' : '🍾 Stop & Point')}
                                     </button>
                                   ) : (
                                     <div style={{ fontSize: '0.75rem', color: '#a5b4fc', textAlign: 'center', fontStyle: 'italic', padding: '0.35rem' }}>
@@ -3695,6 +4172,8 @@ export default function App() {
                 })}
                 <div ref={messagesEndRef} />
               </div>
+            );
+          })()}
 
               {/* Multi-peer Active Video/Audio Mesh Call Participants Grid inside the active room */}
               {currentChat.type === 'room' && isInRoomCall && (
@@ -3708,15 +4187,36 @@ export default function App() {
                   <div className="room-call-grid">
                     {/* Render local self stream */}
                     <div className="room-call-user-card">
-                      <div className="room-call-video-box">
-                        <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} />
+                      <div className={`room-call-video-box voice-active-ring-container ${speakingParticipants['local'] ? 'active-speaking' : ''}`} style={{ position: 'relative' }}>
+                        {speakingParticipants['local'] && <div className="voice-active-ring" />}
+                        <video ref={localVideoRef} autoPlay muted playsInline className={`filter-${localVideoFilter}`} style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} />
                         <div className="room-call-label">You</div>
+                        {/* Filter toggle button on local video */}
+                        <button
+                          onClick={() => setIsCallFilterOpen(p => !p)}
+                          style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+                          title="Video Filters"
+                        >
+                          <Sliders size={14} />
+                        </button>
+                        {isCallFilterOpen && (
+                          <div className="call-filter-panel" onClick={e => e.stopPropagation()}>
+                            {[['none','Normal'],['sepia','Sepia'],['grayscale','B&W'],['cyberpunk','Cyber'],['vintage','Vintage'],['polaroid','Polar'],['gothic','Gothic'],['popart','Pop Art'],['neongold','Neon'],['dreamy','Dreamy'],['highsat','Vivid'],['retrocool','Retro'],['invert','Invert'],['duotoneteal','Teal']].map(([key,label]) => (
+                              <button
+                                key={key}
+                                className={`call-filter-chip ${localVideoFilter === key ? 'active' : ''}`}
+                                onClick={() => { changeLocalVideoFilter(key); setIsCallFilterOpen(false); }}
+                              >{label}</button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {/* Render other room call streams */}
                     {roomCallParticipants.map(p => (
                       <div key={p.socketId} className="room-call-user-card">
-                        <div className="room-call-video-box">
+                        <div className={`room-call-video-box voice-active-ring-container ${speakingParticipants[p.socketId] ? 'active-speaking' : ''}`} style={{ position: 'relative' }}>
+                          {speakingParticipants[p.socketId] && <div className="voice-active-ring" />}
                           <video 
                             ref={el => {
                               if (el && p.stream) {
@@ -3725,6 +4225,7 @@ export default function App() {
                             }} 
                             autoPlay 
                             playsInline 
+                            className={`filter-${roomCallVideoFilters[p.socketId] || 'none'}`}
                             style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} 
                           />
                           <div className="room-call-label">{p.nickname}</div>
@@ -3776,7 +4277,7 @@ export default function App() {
                     <div className="recording-bar" style={{ width: '100%' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <div className="recording-pulse"></div>
-                        <span>Recording Audio... {formatTime(recordingTime)}</span>
+                        <span>Recording Audio ({selectedVoiceFilter !== 'none' ? selectedVoiceFilter : 'normal'})... {formatTime(recordingTime)}</span>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button className="input-icon-btn" onClick={() => stopRecording(false)} style={{ color: 'var(--danger)' }} title="Discard Recording">
@@ -3829,14 +4330,57 @@ export default function App() {
                         style={{ flex: 1, padding: '0.55rem 1rem', borderRadius: '24px', border: 'none', background: 'var(--input-bg)', color: 'var(--text-primary)', outline: 'none', fontSize: '0.85rem' }}
                       />
 
+                      {/* Voice Tune Filter dropdown */}
+                      <select
+                        value={selectedVoiceFilter}
+                        onChange={(e) => setSelectedVoiceFilter(e.target.value)}
+                        style={{
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '12px',
+                          fontSize: '0.72rem',
+                          padding: '0.2rem 0.4rem',
+                          outline: 'none',
+                          cursor: 'pointer',
+                          maxWidth: '85px'
+                        }}
+                        title="Voice Tune filter"
+                      >
+                        <option value="none">🎙️ Normal</option>
+                        <option value="helium">🎈 Helium</option>
+                        <option value="monster">👹 Monster</option>
+                        <option value="robot">🤖 Robot</option>
+                        <option value="echo">🗣️ Echo</option>
+                        <option value="alien">👽 Alien</option>
+                        <option value="underwater">🐙 Muffled</option>
+                        <option value="megaphone">📢 Megaphone</option>
+                        <option value="telephone">📞 Phone</option>
+                        <option value="radio">📻 Radio</option>
+                        <option value="vibrato">🎶 Vibrato</option>
+                        <option value="autotune">🎵 AutoTune</option>
+                      </select>
+
                       {/* Microphone trigger on the right */}
                       <button className="input-icon-btn" onClick={startRecording} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }} title="Record Voice Message">
                         <Mic size={20} />
                       </button>
 
-                      {/* Camera upload trigger on the right */}
+                      {/* Camera take-photo button */}
                       {token && (
-                        <label className="input-icon-btn" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }} title="Upload Image">
+                        <button
+                          className="input-icon-btn"
+                          onClick={startWebcam}
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}
+                          title="Take Photo with Camera"
+                        >
+                          <Camera size={20} />
+                        </button>
+                      )}
+
+                      {/* Upload image from device */}
+                      {token && (
+                        <label className="input-icon-btn" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }} title="Upload Image from Device">
                           <Image size={20} />
                           <input 
                             type="file" 
@@ -4408,13 +4952,18 @@ export default function App() {
             </button>
           </div>
 
-          <div className="profile-avatar-large" style={{ overflow: 'hidden', position: 'relative', borderRadius: '50%', border: '2px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            {selectedProfileUser.avatar && (token || selectedProfileUser.id === user?.id) ? (
-              <img src={selectedProfileUser.avatar} alt={selectedProfileUser.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <div style={{ fontSize: '2.5rem' }}>👤</div>
-            )}
-          </div>
+          {(() => {
+            const glow = getAvatarGlowStyle(selectedProfileUser);
+            return (
+              <div className={`profile-avatar-large ${glow.className}`} style={{ overflow: 'hidden', position: 'relative', borderRadius: '50%', border: '2px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', ...glow.style }}>
+                {selectedProfileUser.avatar && (token || selectedProfileUser.id === user?.id) ? (
+                  <img src={selectedProfileUser.avatar} alt={selectedProfileUser.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ fontSize: '2.5rem' }}>👤</div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Change Profile Picture Button (Registered users only on their own profiles) */}
           {selectedProfileUser.id === user?.id && token && (
@@ -4773,6 +5322,75 @@ export default function App() {
                   }}
                   style={{ width: '100%', accentColor: 'var(--bg-accent-teal)', height: '5px', borderRadius: '5px', outline: 'none' }}
                 />
+              </div>
+
+              {/* Custom Avatar Glow Customizer */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '1.25rem' }}>
+                <span className="text-secondary" style={{ fontSize: '0.8rem' }}>Custom Profile Glow Effect</span>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  {['none', 'pulse', 'rainbow', 'fire', 'glitter'].map(effect => (
+                    <button
+                      key={effect}
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/profile/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ glowStyle: effect })
+                          });
+                          const updated = await res.json();
+                          if (res.ok) {
+                            setUser(updated);
+                            setSelectedProfileUser(updated);
+                          }
+                        } catch (err) { console.error(err); }
+                      }}
+                      className="btn"
+                      style={{
+                        flex: '1 0 30%',
+                        fontSize: '0.72rem',
+                        padding: '0.35rem 0.5rem',
+                        textTransform: 'capitalize',
+                        background: (user?.glowStyle || 'none') === effect ? 'var(--primary-color)' : 'var(--bg-secondary)',
+                        color: (user?.glowStyle || 'none') === effect ? '#fff' : 'var(--text-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {effect}
+                    </button>
+                  ))}
+                </div>
+                {(user?.glowStyle === 'pulse') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.78rem' }}>
+                    <span className="text-secondary">Glow Color:</span>
+                    <input
+                      type="color"
+                      value={user?.glowColor || '#14b8a6'}
+                      onChange={(e) => {
+                        const newColor = e.target.value;
+                        setUser(prev => ({ ...prev, glowColor: newColor }));
+                      }}
+                      onBlur={async (e) => {
+                        const newColor = e.target.value;
+                        try {
+                          const res = await fetch('/api/profile/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ glowColor: newColor })
+                          });
+                          const updated = await res.json();
+                          if (res.ok) {
+                            setUser(updated);
+                            setSelectedProfileUser(updated);
+                          }
+                        } catch (err) { console.error(err); }
+                      }}
+                      style={{ border: 'none', background: 'transparent', width: '36px', height: '24px', cursor: 'pointer' }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -5298,15 +5916,36 @@ export default function App() {
             // Video Call Feed Panel
             <div className="video-feeds-grid">
               {callState.status === 'connected' && remoteStream ? (
-                <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline />
+                <video ref={remoteVideoRef} className={`remote-video filter-${remoteVideoFilter}`} autoPlay playsInline />
               ) : (
                 <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-secondary)' }}>
                   <div className="calling-avatar-ring" style={{ width: '40px', height: '40px', position: 'static' }}></div>
                   <span style={{ fontSize: '0.85rem', marginTop: '1rem' }}>Ringing {callState.nickname}...</span>
                 </div>
               )}
-              {/* Local self video preview */}
-              <video ref={localVideoRef} className="local-video-preview" autoPlay muted playsInline />
+              {/* Local self video preview with filter */}
+              <div style={{ position: 'relative' }}>
+                <video ref={localVideoRef} className={`local-video-preview filter-${localVideoFilter}`} autoPlay muted playsInline />
+                {/* Filter toggle for DM video call */}
+                <button
+                  onClick={() => setIsCallFilterOpen(p => !p)}
+                  style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: '50%', width: '26px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 50 }}
+                  title="Video Filter"
+                >
+                  <Sliders size={13} />
+                </button>
+                {isCallFilterOpen && (
+                  <div className="call-filter-panel" style={{ bottom: '36px', top: 'auto' }} onClick={e => e.stopPropagation()}>
+                    {[['none','Normal'],['sepia','Sepia'],['grayscale','B&W'],['cyberpunk','Cyber'],['vintage','Vintage'],['polaroid','Polar'],['gothic','Gothic'],['popart','Pop Art'],['neongold','Neon'],['dreamy','Dreamy'],['highsat','Vivid'],['retrocool','Retro'],['invert','Invert'],['duotoneteal','Teal']].map(([key,label]) => (
+                      <button
+                        key={key}
+                        className={`call-filter-chip ${localVideoFilter === key ? 'active' : ''}`}
+                        onClick={() => { changeLocalVideoFilter(key); setIsCallFilterOpen(false); }}
+                      >{label}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             // Voice Call Panel
@@ -5469,9 +6108,14 @@ export default function App() {
           <div className="settings-drawer-content" onClick={(e) => e.stopPropagation()}>
             <div className="settings-drawer-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div className="avatar-circle" style={{ width: '48px', height: '48px', overflow: 'hidden', border: '2px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 'bold' }}>
-                  {user?.avatar ? <img src={user.avatar} alt="Me" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : user?.nickname?.substring(0, 2).toUpperCase()}
-                </div>
+                {(() => {
+                  const glow = getAvatarGlowStyle(user);
+                  return (
+                    <div className={`avatar-circle ${glow.className}`} style={{ width: '48px', height: '48px', overflow: 'hidden', border: '2px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 'bold', ...glow.style }}>
+                      {user?.avatar ? <img src={user.avatar} alt="Me" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : user?.nickname?.substring(0, 2).toUpperCase()}
+                    </div>
+                  );
+                })()}
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>{user?.nickname || 'Guest'}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{user?.bio || 'Active participant'}</div>
@@ -5728,6 +6372,263 @@ export default function App() {
               >
                 CANCEL
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 11. Chat Wallpaper Bottom Sheet Picker */}
+      {isWallpaperSheetOpen && currentChat && (
+        <div className="bottom-sheet-backdrop" onClick={() => setIsWallpaperSheetOpen(false)}>
+          <div className="bottom-sheet-content animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="bottom-sheet-header">
+              <span className="bottom-sheet-title">Chat Wallpaper</span>
+              <button className="bottom-sheet-close" onClick={() => setIsWallpaperSheetOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="bottom-sheet-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Choose a background for this chat room:</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                {[
+                  { name: 'Default', key: 'default', style: { background: 'var(--bg-primary)', border: '1px solid var(--border-color)' } },
+                  { name: 'Sunset Glow', key: 'sunset', style: { background: 'linear-gradient(135deg, #ff7e5f, #feb47b)' } },
+                  { name: 'Midnight Blue', key: 'midnight', style: { background: 'linear-gradient(135deg, #09090e, #111124, #1a1a36)' } },
+                  { name: 'Lavender Mist', key: 'lavender', style: { background: 'linear-gradient(135deg, #f3e8ff, #fae8ff, #fdf4ff)' } },
+                  { name: 'Soft Grey', key: 'grey', style: { background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb, #d1d5db)' } },
+                  { name: 'Cyber Neon', key: 'cyberpunk', style: { background: 'linear-gradient(135deg, #120c1f, #1f1137, #0f071a)' } },
+                ].map(wp => (
+                  <div
+                    key={wp.key}
+                    onClick={() => {
+                      const newWps = { ...chatWallpapers, [currentChat.id]: wp.key };
+                      setChatWallpapers(newWps);
+                      localStorage.setItem('h70_wallpapers', JSON.stringify(newWps));
+                    }}
+                    style={{
+                      ...wp.style,
+                      height: '75px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: wp.key === 'lavender' || wp.key === 'grey' || wp.key === 'default' ? '#000' : '#fff',
+                      border: chatWallpapers[currentChat.id] === wp.key || (wp.key === 'default' && !chatWallpapers[currentChat.id]) ? '3px solid var(--primary-color)' : '1px solid transparent',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      textAlign: 'center',
+                      padding: '0.25rem'
+                    }}
+                  >
+                    {wp.name}
+                  </div>
+                ))}
+              </div>
+
+              {/* Custom Image URL Option */}
+              <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>Custom Image URL:</span>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type="text"
+                    placeholder="https://example.com/wallpaper.jpg"
+                    defaultValue={chatWallpapers[currentChat.id]?.startsWith('http') ? chatWallpapers[currentChat.id] : ''}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = e.target.value.trim();
+                        if (val) {
+                          const newWps = { ...chatWallpapers, [currentChat.id]: val };
+                          setChatWallpapers(newWps);
+                          localStorage.setItem('h70_wallpapers', JSON.stringify(newWps));
+                          setIsWallpaperSheetOpen(false);
+                        }
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '0.45rem 0.75rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8rem',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    onClick={(e) => {
+                      const inputEl = e.target.previousSibling;
+                      const val = inputEl?.value.trim();
+                      if (val) {
+                        const newWps = { ...chatWallpapers, [currentChat.id]: val };
+                        setChatWallpapers(newWps);
+                        localStorage.setItem('h70_wallpapers', JSON.stringify(newWps));
+                        setIsWallpaperSheetOpen(false);
+                      }
+                    }}
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.78rem', padding: '0.45rem 0.85rem' }}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 12. Camera / Image Filter Preview & Edit Modal */}
+      {isFilterModalOpen && imagePreviewUrl && (
+        <div className="bottom-sheet-backdrop" style={{ zIndex: 10000 }} onClick={() => { setIsFilterModalOpen(false); setImagePreviewUrl(null); setSelectedImageFile(null); }}>
+          <div className="bottom-sheet-content animate-slide-up" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+            <div className="bottom-sheet-header">
+              <span className="bottom-sheet-title">Apply Camera Filters</span>
+              <button className="bottom-sheet-close" onClick={() => { setIsFilterModalOpen(false); setImagePreviewUrl(null); setSelectedImageFile(null); }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="bottom-sheet-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1rem' }}>
+              
+              {/* Image Preview Box */}
+              <div style={{ position: 'relative', width: '100%', maxHeight: '320px', background: '#000', borderRadius: '12px', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <img
+                  src={imagePreviewUrl}
+                  alt="Camera Filter Preview"
+                  className={`filter-${selectedImageFilter}`}
+                  style={{
+                    maxHeight: '320px',
+                    maxWidth: '100%',
+                    objectFit: 'contain',
+                    transition: 'filter 0.2s ease'
+                  }}
+                />
+              </div>
+
+              {/* View Once Option for DMs */}
+              {currentChat && currentChat.type === 'dm' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px' }}>
+                  <input
+                    type="checkbox"
+                    id="view-once-checkbox"
+                    checked={isViewOnceImage}
+                    onChange={(e) => setIsViewOnceImage(e.target.checked)}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                  />
+                  <label htmlFor="view-once-checkbox" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    Send as View Once (Image disappears after recipient views it)
+                  </label>
+                </div>
+              )}
+
+              {/* Filters List Grid */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Choose a filter preset (14 options):</span>
+                <div style={{ display: 'flex', gap: '0.65rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                  {[
+                    { name: 'Normal', key: 'none', filterClass: 'filter-normal' },
+                    { name: 'Sepia', key: 'sepia', filterClass: 'filter-sepia' },
+                    { name: 'Grayscale', key: 'grayscale', filterClass: 'filter-grayscale' },
+                    { name: 'Invert', key: 'invert', filterClass: 'filter-invert' },
+                    { name: 'Cyberpunk', key: 'cyberpunk', filterClass: 'filter-cyberpunk' },
+                    { name: 'Vintage', key: 'vintage', filterClass: 'filter-vintage' },
+                    { name: 'Polaroid', key: 'polaroid', filterClass: 'filter-polaroid' },
+                    { name: 'Gothic', key: 'gothic', filterClass: 'filter-gothic' },
+                    { name: 'Pop Art', key: 'popart', filterClass: 'filter-popart' },
+                    { name: 'Neon Gold', key: 'neongold', filterClass: 'filter-neongold' },
+                    { name: 'Duotone Teal', key: 'duotoneteal', filterClass: 'filter-duotoneteal' },
+                    { name: 'Dreamy', key: 'dreamy', filterClass: 'filter-dreamy' },
+                    { name: 'High Sat', key: 'highsat', filterClass: 'filter-highsat' },
+                    { name: 'Retro Cool', key: 'retrocool', filterClass: 'filter-retrocool' }
+                  ].map(f => (
+                    <div
+                      key={f.key}
+                      onClick={() => setSelectedImageFilter(f.key)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '4px',
+                        cursor: 'pointer',
+                        flexShrink: 0
+                      }}
+                    >
+                      <img
+                        src={imagePreviewUrl}
+                        alt={f.name}
+                        className={`filter-preview-thumb ${f.filterClass} ${selectedImageFilter === f.key ? 'active' : ''}`}
+                      />
+                      <span style={{ fontSize: '0.68rem', color: selectedImageFilter === f.key ? 'var(--primary-color)' : 'var(--text-secondary)', fontWeight: 600 }}>
+                        {f.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: 'auto' }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    setIsFilterModalOpen(false);
+                    setImagePreviewUrl(null);
+                    setSelectedImageFile(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                  onClick={handleSendFilteredImage}
+                >
+                  <Send size={16} /> Send Image
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 13. Webcam Capture Modal */}
+      {isWebcamOpen && (
+        <div className="bottom-sheet-backdrop" style={{ zIndex: 11000 }} onClick={stopWebcam}>
+          <div className="bottom-sheet-content animate-slide-up" style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div className="bottom-sheet-header">
+              <span className="bottom-sheet-title">📸 Take a Photo</span>
+              <button className="bottom-sheet-close" onClick={stopWebcam}><X size={20} /></button>
+            </div>
+            <div className="bottom-sheet-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', alignItems: 'center' }}>
+              {/* Live webcam preview */}
+              <div style={{ position: 'relative', width: '100%', maxWidth: '480px', background: '#000', borderRadius: '14px', overflow: 'hidden', aspectRatio: '4/3' }}>
+                <video
+                  ref={webcamVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+                {/* Shutter overlay ring */}
+                <div style={{ position: 'absolute', inset: 0, border: '3px solid rgba(255,255,255,0.15)', borderRadius: '14px', pointerEvents: 'none' }} />
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
+                Position yourself, then click Capture. The photo will open in the filter editor before sending.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', width: '100%', maxWidth: '480px' }}>
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={stopWebcam}>Cancel</button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '1rem' }}
+                  onClick={captureWebcamPhoto}
+                >
+                  <Camera size={18} /> Capture
+                </button>
+              </div>
             </div>
           </div>
         </div>
