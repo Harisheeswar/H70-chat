@@ -29,7 +29,7 @@
   --bg-sidebar: #151c28;
   --btn-secondary-bg: rgba(255, 255, 255, 0.05);
   --btn-secondary-hover-bg: rgba(255, 255, 255, 0.10);
-  --input-bg: rgba(0, 0, 0, 0.15);
+  --input-bg: #1e2230;
   --chat-bubble-incoming: var(--bg-secondary);
   --chat-bubble-outgoing: #dde8f8;
 }
@@ -731,12 +731,15 @@ input, button, textarea {
 
 .chat-text-input {
   flex: 1;
-  background: var(--bg-primary);
+  background: var(--input-bg);
   border: 1px solid var(--border-color);
   padding: 0.85rem 1.25rem;
   border-radius: 14px;
   color: var(--text-primary);
   font-size: 0.95rem;
+  min-width: 0;
+  outline: none;
+  -webkit-appearance: none;
 }
 
 .chat-text-input:focus {
@@ -2310,21 +2313,53 @@ input, button, textarea {
   }
 }
 
-/* Mobile input bar styling overrides for better screen fitting */
+/* ===== MOBILE INPUT BAR — GUARANTEED VISIBILITY ===== */
 @media (max-width: 768px) {
+  /* Make the entire input bar stick to bottom and always show */
   .chat-input-bar {
-    gap: 0.3rem !important;
-    padding: 0.35rem 0.5rem !important;
+    flex-shrink: 0 !important;
+    position: sticky !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 50 !important;
+    background: var(--bg-secondary) !important;
+    border-top: 1px solid var(--border-color) !important;
+    padding: 8px 10px 12px !important;
+    gap: 6px !important;
+    /* Support iPhone notch / safe area */
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
   }
-  .input-icon-btn {
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 1.1rem !important;
-  }
+
+  /* Text input — solid visible background, full width */
   .chat-text-input {
-    padding: 0.5rem 0.75rem !important;
-    font-size: 0.85rem !important;
-    border-radius: 8px !important;
+    background: #1e2230 !important;
+    color: #f3f4f6 !important;
+    border: 1.5px solid rgba(124, 77, 255, 0.4) !important;
+    border-radius: 22px !important;
+    padding: 10px 14px !important;
+    font-size: 15px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    outline: none !important;
+    -webkit-appearance: none !important;
+  }
+
+  /* In light theme override */
+  .light-theme .chat-text-input {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  /* Icon buttons — comfortable tap target */
+  .input-icon-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    font-size: 1rem !important;
+    flex-shrink: 0 !important;
+    border-radius: 50% !important;
   }
 }
 
