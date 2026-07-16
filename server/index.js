@@ -683,11 +683,12 @@ io.on('connection', (socket) => {
   });
 
   // Send public room message
-  socket.on('send-room-message', ({ roomId, type, content }) => {
+  socket.on('send-room-message', ({ id, roomId, type, content }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
     const msg = db.createMessage({
+      id,
       roomId,
       senderId: user.id,
       senderNickname: user.nickname,
@@ -701,7 +702,7 @@ io.on('connection', (socket) => {
   });
 
   // Send Direct Message (DM)
-  socket.on('send-direct-message', ({ recipientId, type, content, viewsRemaining }) => {
+  socket.on('send-direct-message', ({ id, recipientId, type, content, viewsRemaining }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
@@ -729,6 +730,7 @@ io.on('connection', (socket) => {
     }
 
     const msg = db.createMessage({
+      id,
       chatKey,
       senderId: user.id,
       senderNickname: user.nickname,
