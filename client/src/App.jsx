@@ -4289,118 +4289,124 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    // Standard Chat typing panel
-                    <>
-                      {/* Emoji trigger on the left */}
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    // Standard Chat typing panel — two-row mobile-friendly layout
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' }}>
+                      {/* ROW 1: Text input + Send button */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input 
+                          type="text" 
+                          className="chat-text-input" 
+                          value={msgText} 
+                          onChange={(e) => handleTypingChange(e.target.value)} 
+                          onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                          placeholder="Type a message..." 
+                          style={{ flex: 1, padding: '0.55rem 1rem', borderRadius: '24px', border: 'none', background: 'var(--input-bg)', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem', minWidth: 0 }}
+                        />
+                        {/* Send button */}
                         <button 
-                          className="input-icon-btn" 
-                          onClick={() => { setIsEmojiOpen(!isEmojiOpen); setIsGifOpen(false); }} 
-                          title="Insert Emoji"
-                          style={{ fontSize: '1.25rem', padding: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                          className="input-icon-btn btn-send" 
+                          onClick={handleSendMessage} 
+                          title="Send Message" 
+                          style={{ background: 'linear-gradient(135deg, #14b8a6, #7c3aed)', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', borderRadius: '50%', flexShrink: 0, width: '38px', height: '38px' }}
                         >
-                          😊
+                          <Send size={18} />
                         </button>
-                        {isEmojiOpen && (
-                          <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '6px', display: 'flex', gap: '6px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                            {['😂', '❤️', '👍', '🔥', '😍', '🎉', '🚀', '😭', '👏', '👀'].map(emoji => (
-                              <span 
-                                key={emoji} 
-                                onClick={() => {
-                                  setMsgText(prev => prev + emoji);
-                                  setIsEmojiOpen(false);
-                                }}
-                                style={{ cursor: 'pointer', fontSize: '1.2rem', padding: '2px' }}
-                              >
-                                {emoji}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                       </div>
 
-                      {/* Text Input in the center */}
-                      <input 
-                        type="text" 
-                        className="chat-text-input" 
-                        value={msgText} 
-                        onChange={(e) => handleTypingChange(e.target.value)} 
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                        placeholder="Type a message..." 
-                        style={{ flex: 1, padding: '0.55rem 1rem', borderRadius: '24px', border: 'none', background: 'var(--input-bg)', color: 'var(--text-primary)', outline: 'none', fontSize: '0.85rem' }}
-                      />
+                      {/* ROW 2: Action buttons — always visible on mobile */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'space-between' }}>
+                        {/* Emoji */}
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <button 
+                            className="input-icon-btn" 
+                            onClick={() => { setIsEmojiOpen(!isEmojiOpen); setIsGifOpen(false); }} 
+                            title="Insert Emoji"
+                            style={{ fontSize: '1.25rem', padding: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                          >
+                            😊
+                          </button>
+                          {isEmojiOpen && (
+                            <div style={{ position: 'absolute', bottom: '45px', left: '0', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '6px', display: 'flex', gap: '6px', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', flexWrap: 'wrap', width: '220px' }}>
+                              {['😂', '❤️', '👍', '🔥', '😍', '🎉', '🚀', '😭', '👏', '👀'].map(emoji => (
+                                <span 
+                                  key={emoji} 
+                                  onClick={() => {
+                                    setMsgText(prev => prev + emoji);
+                                    setIsEmojiOpen(false);
+                                  }}
+                                  style={{ cursor: 'pointer', fontSize: '1.2rem', padding: '2px' }}
+                                >
+                                  {emoji}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
 
-                      {/* Voice Tune Filter dropdown */}
-                      <select
-                        value={selectedVoiceFilter}
-                        onChange={(e) => setSelectedVoiceFilter(e.target.value)}
-                        style={{
-                          background: 'var(--bg-secondary)',
-                          color: 'var(--text-primary)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '12px',
-                          fontSize: '0.72rem',
-                          padding: '0.2rem 0.4rem',
-                          outline: 'none',
-                          cursor: 'pointer',
-                          maxWidth: '85px'
-                        }}
-                        title="Voice Tune filter"
-                      >
-                        <option value="none">🎙️ Normal</option>
-                        <option value="helium">🎈 Helium</option>
-                        <option value="monster">👹 Monster</option>
-                        <option value="robot">🤖 Robot</option>
-                        <option value="echo">🗣️ Echo</option>
-                        <option value="alien">👽 Alien</option>
-                        <option value="underwater">🐙 Muffled</option>
-                        <option value="megaphone">📢 Megaphone</option>
-                        <option value="telephone">📞 Phone</option>
-                        <option value="radio">📻 Radio</option>
-                        <option value="vibrato">🎶 Vibrato</option>
-                        <option value="autotune">🎵 AutoTune</option>
-                      </select>
-
-                      {/* Microphone trigger on the right */}
-                      <button className="input-icon-btn" onClick={startRecording} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }} title="Record Voice Message">
-                        <Mic size={20} />
-                      </button>
-
-                      {/* Camera take-photo button */}
-                      {token && (
-                        <button
-                          className="input-icon-btn"
-                          onClick={startWebcam}
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}
-                          title="Take Photo with Camera"
+                        {/* Voice Tune Filter dropdown */}
+                        <select
+                          value={selectedVoiceFilter}
+                          onChange={(e) => setSelectedVoiceFilter(e.target.value)}
+                          style={{
+                            background: 'var(--bg-secondary)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '10px',
+                            fontSize: '0.7rem',
+                            padding: '0.2rem 0.3rem',
+                            outline: 'none',
+                            cursor: 'pointer',
+                            flex: 1,
+                            minWidth: 0,
+                            maxWidth: '110px'
+                          }}
+                          title="Voice Tune filter"
                         >
-                          <Camera size={20} />
+                          <option value="none">🎙️ Normal</option>
+                          <option value="helium">🎈 Helium</option>
+                          <option value="monster">👹 Monster</option>
+                          <option value="robot">🤖 Robot</option>
+                          <option value="echo">🗣️ Echo</option>
+                          <option value="alien">👽 Alien</option>
+                          <option value="underwater">🐙 Muffled</option>
+                          <option value="megaphone">📢 Megaphone</option>
+                          <option value="telephone">📞 Phone</option>
+                          <option value="radio">📻 Radio</option>
+                          <option value="vibrato">🎶 Vibrato</option>
+                          <option value="autotune">🎵 AutoTune</option>
+                        </select>
+
+                        {/* Microphone */}
+                        <button className="input-icon-btn" onClick={startRecording} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', flexShrink: 0 }} title="Record Voice Message">
+                          <Mic size={20} />
                         </button>
-                      )}
 
-                      {/* Upload image from device */}
-                      {token && (
-                        <label className="input-icon-btn" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }} title="Upload Image from Device">
-                          <Image size={20} />
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={(e) => handleImageSelect(e, false)} 
-                            style={{ display: 'none' }} 
-                          />
-                        </label>
-                      )}
+                        {/* Camera take-photo */}
+                        {token && (
+                          <button
+                            className="input-icon-btn"
+                            onClick={startWebcam}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            title="Take Photo with Camera"
+                          >
+                            <Camera size={20} />
+                          </button>
+                        )}
 
-                      {/* Send button (Paper airplane arrow) on the far right */}
-                      <button 
-                        className="input-icon-btn btn-send" 
-                        onClick={handleSendMessage} 
-                        title="Send Message" 
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--bg-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}
-                      >
-                        <Send size={20} />
-                      </button>
-                    </>
+                        {/* Upload image from device */}
+                        {token && (
+                          <label className="input-icon-btn" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', flexShrink: 0 }} title="Upload Image from Device">
+                            <Image size={20} />
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              onChange={(e) => handleImageSelect(e, false)} 
+                              style={{ display: 'none' }} 
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
                   );
                 })()}
               </div>
