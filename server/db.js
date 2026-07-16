@@ -258,11 +258,41 @@ export const db = {
       content: msg.content,
       read: false,
       viewsRemaining: msg.viewsRemaining ?? null,
+      reactions: {}, // { "👍": ["userId1", "userId2"], "❤️": ["userId3"] }
       createdAt: new Date().toISOString()
     };
     data.messages.push(newMessage);
     writeData(data);
     return newMessage;
+  },
+  // Toggles a single user's reaction on a message. If they already reacted
+  // with this emoji, it's removed (un-react); if they reacted with a
+  // different emoji, that one is swapped out (one reaction per user).
+  toggleReaction: (messageId, userId, emoji) => {
+    const data = readData();
+    const msg = data.messages.find(m => m.id === messageId);
+    if (!msg) return null;
+    if (!msg.reactions) msg.reactions = {};
+
+    // Remove this user from every emoji bucket first (enforces one reaction per user)
+    let hadThisEmoji = false;
+    for (const key of Object.keys(msg.reactions)) {
+      const idx = msg.reactions[key].indexOf(userId);
+      if (idx !== -1) {
+        if (key === emoji) hadThisEmoji = true;
+        msg.reactions[key].splice(idx, 1);
+        if (msg.reactions[key].length === 0) delete msg.reactions[key];
+      }
+    }
+
+    // If they didn't already have this exact emoji, add it (toggle on)
+    if (!hadThisEmoji) {
+      if (!msg.reactions[emoji]) msg.reactions[emoji] = [];
+      msg.reactions[emoji].push(userId);
+    }
+
+    writeData(data);
+    return msg;
   },
 
   // Reset Tokens

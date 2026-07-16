@@ -628,15 +628,25 @@ input, button, textarea {
   font-size: 0.95rem;
   line-height: 1.45;
   color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  transition: transform 0.15s ease;
 }
 
 .message-wrapper.outgoing .message-bubble {
-  background: #dde8f8;
-  color: #1a1a2e;
+  background: linear-gradient(135deg, var(--bg-accent) 0%, #5b3fd6 100%);
+  color: #ffffff;
   border: none;
   border-radius: 16px;
   border-top-right-radius: 4px;
+  box-shadow: 0 2px 10px rgba(124, 77, 255, 0.28);
 }
+
+.light-theme .message-wrapper.outgoing .message-bubble {
+  background: linear-gradient(135deg, var(--bg-accent) 0%, #5346e0 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.22);
+}
+
 
 .message-info-header {
   display: flex;
@@ -2333,4 +2343,265 @@ input, button, textarea {
   50% {
     border-color: transparent;
   }
+}
+
+/* ============================================================
+   POLISH PASS — cohesive depth, motion, and interaction states
+   ============================================================ */
+
+/* Buttons: consistent lift, glow, and press feedback */
+.btn,
+.auth-button,
+.action-btn,
+.call-btn,
+.control-circle-btn,
+.btn-create-room,
+.btn-add-story {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.15s ease;
+}
+
+.btn-primary,
+.auth-button {
+  background: linear-gradient(135deg, var(--bg-accent) 0%, #5b3fd6 100%);
+  box-shadow: 0 2px 8px rgba(124, 77, 255, 0.25);
+}
+
+.btn-primary:hover,
+.auth-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(124, 77, 255, 0.35);
+}
+
+.btn-primary:active,
+.auth-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(124, 77, 255, 0.25);
+}
+
+.btn:disabled,
+.auth-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Send button gets the signature gradient treatment too */
+.btn-send {
+  background: linear-gradient(135deg, var(--bg-accent) 0%, var(--bg-accent-teal) 130%);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.btn-send:hover {
+  transform: scale(1.06);
+  filter: brightness(1.08);
+  box-shadow: 0 2px 12px rgba(124, 77, 255, 0.4);
+}
+
+.btn-send:active {
+  transform: scale(0.96);
+}
+
+/* List items (rooms, contacts): subtle elevation + left accent bar when active */
+.list-item {
+  border-left: 2px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.list-item:hover {
+  background: rgba(255, 255, 255, 0.045);
+  transform: translateX(2px);
+}
+
+.list-item.active {
+  border-left: 2px solid var(--bg-accent-teal);
+}
+
+/* Avatars: soft ring for depth, subtle pop on hover where clickable */
+.avatar-circle {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.04);
+}
+
+.list-item:hover .avatar-circle {
+  transform: scale(1.04);
+}
+
+/* Online status dot: gentle breathing animation instead of a flat dot */
+.online-dot {
+  animation: online-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes online-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+}
+
+/* Cards: consistent elevated depth */
+.featured-rooms-card,
+.profile-stats-card,
+.call-modal {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.featured-rooms-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* Chat header: slight depth so it reads above the message list */
+.chat-header {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+  position: relative;
+}
+
+/* Empty state: quieter, more intentional typography */
+.chat-pane-welcome {
+  gap: 0.5rem;
+}
+
+.chat-pane-welcome h2,
+.chat-pane-welcome h3 {
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* Accessible focus states across all interactive elements */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+.list-item:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--bg-accent-teal);
+  outline-offset: 2px;
+}
+
+/* Respect users who've asked for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   MESSAGE REACTIONS
+   ============================================================ */
+
+.message-reactions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+.message-reactions-row.outgoing {
+  justify-content: flex-end;
+}
+
+.reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: transform 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.reaction-pill:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.reaction-pill.mine {
+  background: rgba(124, 77, 255, 0.18);
+  border-color: rgba(124, 77, 255, 0.45);
+  color: var(--text-primary);
+}
+
+.reaction-count {
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+
+.reaction-add-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.message-wrapper:hover .reaction-add-btn {
+  opacity: 1;
+}
+
+.reaction-add-btn:hover {
+  background: var(--bg-accent);
+  color: #fff;
+  border-color: var(--bg-accent);
+}
+
+.reaction-picker-wrapper {
+  position: relative;
+}
+
+.reaction-picker-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 6px;
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.4rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow);
+  z-index: 5;
+  animation: fadeIn 0.12s ease;
+}
+
+.message-reactions-row.outgoing .reaction-picker-popup {
+  left: auto;
+  right: 0;
+}
+
+.reaction-picker-emoji {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  padding: 0.25rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+
+.reaction-picker-emoji:hover {
+  transform: scale(1.2);
+  background: rgba(255, 255, 255, 0.08);
 }
