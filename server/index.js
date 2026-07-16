@@ -755,6 +755,33 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Game invitation and synchronization socket events
+  socket.on('game-action-invite', ({ gameId, recipientId, gameName }) => {
+    const user = activeSockets.get(socket.id);
+    if (!user) return;
+    const recipientSocketId = activeUsers.get(recipientId);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('game-action-invite-receive', {
+        gameId,
+        gameName,
+        senderId: user.id,
+        senderNickname: user.nickname
+      });
+    }
+  });
+
+  socket.on('game-action-sync', ({ gameId, recipientId, gameState }) => {
+    const user = activeSockets.get(socket.id);
+    if (!user) return;
+    const recipientSocketId = activeUsers.get(recipientId);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('game-action-sync-receive', {
+        gameId,
+        gameState
+      });
+    }
+  });
+
   // Load private DM message history
   socket.on('get-direct-history', ({ recipientId }) => {
     const user = activeSockets.get(socket.id);

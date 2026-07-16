@@ -23,25 +23,43 @@
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   --font-heading: 'Outfit', sans-serif;
   --font-body: 'Inter', sans-serif;
+  
+  /* Elements Variables */
+  --bg-nav: #0d0f14;
+  --bg-sidebar: #151c28;
+  --btn-secondary-bg: rgba(255, 255, 255, 0.05);
+  --btn-secondary-hover-bg: rgba(255, 255, 255, 0.10);
+  --input-bg: rgba(0, 0, 0, 0.15);
+  --chat-bubble-incoming: var(--bg-secondary);
+  --chat-bubble-outgoing: #dde8f8;
 }
 
 /* Light Theme Variables Overrides */
 .light-theme {
-  --bg-primary: #f3f4f6;
+  --bg-primary: #f1f5f9;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f9fafb;
-  --bg-accent: #6366f1;
-  --bg-accent-hover: #4f46e5;
-  --bg-accent-teal: #06b6d4;
-  --bg-accent-teal-hover: #0891b2;
-  --text-primary: #111827;
-  --text-secondary: #4b5563;
-  --text-muted: #9ca3af;
-  --border-color: rgba(0, 0, 0, 0.08);
-  --border-focus: rgba(99, 102, 241, 0.4);
-  --glass-bg: rgba(255, 255, 255, 0.8);
-  --glass-border: rgba(0, 0, 0, 0.06);
-  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+  --bg-tertiary: #f8fafc;
+  --bg-accent: #3b82f6;
+  --bg-accent-hover: #2563eb;
+  --bg-accent-teal: #0ea5e9;
+  --bg-accent-teal-hover: #0284c7;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-color: #cbd5e1;
+  --border-focus: rgba(59, 130, 246, 0.4);
+  --glass-bg: rgba(255, 255, 255, 0.95);
+  --glass-border: #cbd5e1;
+  --glass-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  
+  /* Elements Variables */
+  --bg-nav: #e2e8f0;
+  --bg-sidebar: #f8fafc;
+  --btn-secondary-bg: #cbd5e1;
+  --btn-secondary-hover-bg: #94a3b8;
+  --input-bg: #ffffff;
+  --chat-bubble-incoming: #f1f5f9;
+  --chat-bubble-outgoing: #e0f2fe;
 }
 
 * {
@@ -975,12 +993,13 @@ input, button, textarea {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--btn-secondary-bg);
   color: var(--text-primary);
+  border: 1px solid var(--border-color);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--btn-secondary-hover-bg);
 }
 
 .btn-primary {
@@ -1321,8 +1340,8 @@ input, button, textarea {
 .vertical-nav-bar {
   width: 70px;
   height: 100%;
-  background-color: #0d0f14;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: var(--bg-nav);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1357,22 +1376,22 @@ input, button, textarea {
 }
 
 .vertical-nav-btn:hover, .vertical-nav-btn.active {
-  background-color: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  background-color: var(--btn-secondary-bg);
+  color: var(--text-primary);
 }
 
 .vertical-nav-btn.active {
-  color: var(--bg-accent-teal) !important;
-  background-color: rgba(0, 229, 255, 0.05);
-  border-left: 3px solid var(--bg-accent-teal);
+  color: var(--bg-accent) !important;
+  background-color: var(--btn-secondary-hover-bg);
+  border-left: 3px solid var(--bg-accent);
   border-radius: 0 12px 12px 0;
 }
 
 /* 2. Middle Sidebar lists */
 .sidebar {
   width: 290px !important;
-  background-color: #151c28 !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: var(--bg-sidebar) !important;
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
