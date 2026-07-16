@@ -2912,6 +2912,90 @@ input:checked + .switch-slider:before {
     height: calc(100dvh - 60px) !important;
   }
 
+  /* Chat pane: pad bottom so input bar never hides under the fixed bottom nav */
+  .chat-pane {
+    padding-bottom: 0 !important;
+  }
+
+  /* Input bar: always visible ABOVE the fixed bottom nav */
+  .chat-input-bar {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 900 !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    padding: 8px 10px 10px !important;
+    background: var(--bg-secondary) !important;
+    border-top: 2px solid var(--border-color) !important;
+  }
+
+  /* Both input rows fill the width */
+  .input-row-main,
+  .input-row-actions {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  .input-row-main {
+    gap: 8px !important;
+  }
+
+  .input-row-actions {
+    gap: 4px !important;
+    justify-content: space-between !important;
+  }
+
+  /* Text input always visible with solid background */
+  .chat-text-input {
+    background: #1e2230 !important;
+    color: #f3f4f6 !important;
+    border: 1.5px solid rgba(124, 77, 255, 0.5) !important;
+    border-radius: 22px !important;
+    padding: 10px 14px !important;
+    font-size: 15px !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    outline: none !important;
+    -webkit-appearance: none !important;
+  }
+  .light-theme .chat-text-input {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+  }
+
+  /* Icon buttons — large enough to tap */
+  .input-icon-btn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+  }
+
+  /* Send circle */
+  .btn-send-circle {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Voice filter select */
+  .voice-filter-select {
+    flex: 1 !important;
+    min-width: 0 !important;
+    max-width: 120px !important;
+    font-size: 0.7rem !important;
+  }
+
   .vertical-nav-bar {
     display: none !important; /* Hide leftmost nav bar completely on mobile */
   }
