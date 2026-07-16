@@ -5,7 +5,7 @@ import {
   Video, Phone, PhoneOff, MicOff, VideoOff, Edit, X, Compass, Award, 
   BookOpen, LogOut, CheckCircle, Mail, Key, ShieldAlert,
   Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu, Gamepad2,
-  DoorOpen, MessageCircle, Contact, Dices
+  DoorOpen, MessageCircle, Contact, Dices, Share
 } from 'lucide-react';
 
 import { ANIMALS_LIST } from './animals';
@@ -3763,20 +3763,10 @@ export default function App() {
                                     onlineUsers.find(u => u.id === currentChat.id)?.blockedUsers?.includes(user?.id);
                   const isMutual = currentChat.type === 'room' || checkIsMutualFriend(currentChat.id);
                   const recipient = onlineUsers.find(u => u.id === currentChat.id);
-                  const isRecipientPrivate = recipient?.privacyMode === 'private';
-                  const isDmLock = currentChat.type === 'dm' && isRecipientPrivate && !isMutual;
-
                   if (isBlocked) {
                     return (
                       <div style={{ width: '100%', textAlign: 'center', padding: '1rem', color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>
                         Message delivery disabled due to blocking.
-                      </div>
-                    );
-                  }
-                  if (isDmLock) {
-                    return (
-                      <div style={{ width: '100%', textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                        This user's profile is Private. You must be added as a friend to message them.
                       </div>
                     );
                   }
