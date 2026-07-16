@@ -77,6 +77,8 @@ export default function App() {
   const [roomSearchInput, setRoomSearchInput] = useState('');
   const [theme, setTheme] = useState(localStorage.getItem('h70_theme') || 'dark');
   const [typingUsers, setTypingUsers] = useState([]);
+  const [roomTypingUsers, setRoomTypingUsers] = useState({}); // { roomId: [{userId, nickname}] }
+  const [openReactionPickerFor, setOpenReactionPickerFor] = useState(null);
   const isTypingRef = useRef(false);
   // Voice Message States
   const [isRecording, setIsRecording] = useState(false);
@@ -123,6 +125,7 @@ export default function App() {
   useEffect(() => {
     setTypingUsers([]);
     isTypingRef.current = false;
+    setOpenReactionPickerFor(null);
   }, [currentChat]);
 
   useEffect(() => {
@@ -572,6 +575,24 @@ export default function App() {
       });
     });
 
+    socket.on('room-user-typing-state', ({ roomId, userId, nickname, isTyping }) => {
+      setRoomTypingUsers(prev => {
+        const key = roomId;
+        const existing = prev[key] || [];
+        let updated;
+        if (isTyping) {
+          updated = existing.some(u => u.userId === userId) ? existing : [...existing, { userId, nickname }];
+        } else {
+          updated = existing.filter(u => u.userId !== userId);
+        }
+        return { ...prev, [key]: updated };
+      });
+    });
+
+    socket.on('message-reaction-updated', ({ messageId, reactions }) => {
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
+    });
+
     // Level & XP update events
     socket.on('stats-updated', ({ xp, level }) => {
       setUser(prev => {
@@ -922,6 +943,10 @@ export default function App() {
         type: 'text',
         content: msgText.trim()
       });
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        socketRef.current?.emit('room-typing', { roomId: currentChat.id, isTyping: false });
+      }
     } else {
       socketRef.current?.emit('send-direct-message', {
         recipientId: currentChat.id,
@@ -944,7 +969,24 @@ export default function App() {
         isTypingRef.current = currentlyTyping;
         socketRef.current?.emit('dm-typing', { recipientId: currentChat.id, isTyping: currentlyTyping });
       }
+    } else if (currentChat && currentChat.type === 'room') {
+      const currentlyTyping = text.trim().length > 0;
+      if (isTypingRef.current !== currentlyTyping) {
+        isTypingRef.current = currentlyTyping;
+        socketRef.current?.emit('room-typing', { roomId: currentChat.id, isTyping: currentlyTyping });
+      }
     }
+  };
+
+  // Toggle an emoji reaction on a message
+  const handleToggleReaction = (msg, emoji) => {
+    if (!user) return;
+    socketRef.current?.emit('toggle-reaction', {
+      messageId: msg.id,
+      emoji,
+      roomId: msg.roomId || null,
+      chatKey: msg.chatKey || null
+    });
   };
 
   const handleStartGame = () => {
@@ -2968,6 +3010,45 @@ export default function App() {
                             </div>
                           )}
                         </div>
+
+                        {/* Reaction pills + quick-react trigger */}
+                        <div className={`message-reactions-row ${isOutgoing ? 'outgoing' : ''}`}>
+                          {msg.reactions && Object.entries(msg.reactions).filter(([, uids]) => uids.length > 0).map(([emoji, uids]) => (
+                            <button
+                              key={emoji}
+                              className={`reaction-pill ${uids.includes(user?.id) ? 'mine' : ''}`}
+                              onClick={() => handleToggleReaction(msg, emoji)}
+                              title={uids.includes(user?.id) ? 'Remove your reaction' : 'React'}
+                            >
+                              <span>{emoji}</span>
+                              <span className="reaction-count">{uids.length}</span>
+                            </button>
+                          ))}
+                          {msg.type !== 'game_init' && msg.type !== 'game_truth_dare' && msg.type !== 'game_spin_bottle' && (
+                            <div className="reaction-picker-wrapper">
+                              <button
+                                className="reaction-add-btn"
+                                onClick={() => setOpenReactionPickerFor(openReactionPickerFor === msg.id ? null : msg.id)}
+                                title="Add reaction"
+                              >
+                                +
+                              </button>
+                              {openReactionPickerFor === msg.id && (
+                                <div className="reaction-picker-popup">
+                                  {['👍', '❤️', '😂', '😮', '😢', '🔥'].map(emoji => (
+                                    <button
+                                      key={emoji}
+                                      className="reaction-picker-emoji"
+                                      onClick={() => { handleToggleReaction(msg, emoji); setOpenReactionPickerFor(null); }}
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -3021,6 +3102,17 @@ export default function App() {
                   <div className="typing-dot" style={{ animationDelay: '0.2s' }}>.</div>
                   <div className="typing-dot" style={{ animationDelay: '0.4s' }}>.</div>
                   <span style={{ marginLeft: '4px' }}>{currentChat.nickname} is typing...</span>
+                </div>
+              )}
+              {currentChat.type === 'room' && (roomTypingUsers[currentChat.id] || []).length > 0 && (
+                <div style={{ padding: '0.25rem 1rem', fontSize: '0.75rem', color: 'var(--bg-accent-teal)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div className="typing-dot" style={{ animationDelay: '0s' }}>.</div>
+                  <div className="typing-dot" style={{ animationDelay: '0.2s' }}>.</div>
+                  <div className="typing-dot" style={{ animationDelay: '0.4s' }}>.</div>
+                  <span style={{ marginLeft: '4px' }}>
+                    {(roomTypingUsers[currentChat.id] || []).map(u => u.nickname).join(', ')}
+                    {(roomTypingUsers[currentChat.id] || []).length === 1 ? ' is' : ' are'} typing...
+                  </span>
                 </div>
               )}
 
