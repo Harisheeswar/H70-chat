@@ -566,7 +566,7 @@ export default function App() {
     }
   }, []);
 
-  // Fetch all registered users for room settings member status comparison
+  // Fetch all registered users on mount (for DM profiles, call avatars, etc.)
   const fetchAllUsers = async () => {
     try {
       const res = await fetch('/api/users');
@@ -578,6 +578,10 @@ export default function App() {
       console.error('Error fetching registered users:', err);
     }
   };
+
+  useEffect(() => {
+    fetchAllUsers();
+  }, []);
 
   useEffect(() => {
     if (viewingRoomSettings) {
@@ -4316,7 +4320,16 @@ export default function App() {
                   )}
                 </button>
                 <div className="chat-header-info">
-                  <div className="avatar-circle" style={{ width: '40px', height: '40px', fontSize: '0.9rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  <div
+                    className="avatar-circle"
+                    style={{ width: '40px', height: '40px', fontSize: '0.9rem', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: currentChat.type === 'dm' ? 'pointer' : 'default' }}
+                    onClick={() => {
+                      if (currentChat.type === 'dm') {
+                        const profile = onlineUsers.find(u => u.id === currentChat.id) || registeredUsers.find(u => u.id === currentChat.id);
+                        if (profile) setSelectedProfileUser(profile);
+                      }
+                    }}
+                  >
                     {currentChat.type === 'room' ? (
                       currentChat.avatar ? (
                         <img src={currentChat.avatar} alt={currentChat.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -4325,7 +4338,7 @@ export default function App() {
                       )
                     ) : (
                       (() => {
-                        const recipient = onlineUsers.find(u => u.id === currentChat.id);
+                        const recipient = onlineUsers.find(u => u.id === currentChat.id) || registeredUsers.find(u => u.id === currentChat.id);
                         return recipient?.avatar ? (
                           <img src={recipient.avatar} alt={currentChat.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
@@ -4356,9 +4369,11 @@ export default function App() {
                     ) : (
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                         {(() => {
-                          const recipient = onlineUsers.find(u => u.id === currentChat.id);
-                          if (!recipient) return 'Direct Message Session';
-                          return recipient.isOnline ? 'Online' : `Offline • Left ${formatLastSeen(recipient.lastSeen)}`;
+                          const recipient = onlineUsers.find(u => u.id === currentChat.id) || registeredUsers.find(u => u.id === currentChat.id);
+                          if (!recipient) return '💬 Direct Message';
+                          return recipient.isOnline ? (
+                            <span style={{ color: '#10b981', fontWeight: 600 }}>● Online</span>
+                          ) : `Last seen ${formatLastSeen(recipient.lastSeen)}`;
                         })()}
                       </div>
                     )}
@@ -6643,19 +6658,24 @@ export default function App() {
           ) : (
             // Voice Call Panel
             <div className="voice-call-only-panel">
-              <div className="calling-user-avatar" style={{ marginBottom: '0.75rem', width: '64px', height: '64px', fontSize: '1.4rem' }}>
-                {callState.nickname?.substring(0, 2).toUpperCase()}
+              <div className="calling-user-avatar" style={{ marginBottom: '0.75rem', width: '80px', height: '80px', fontSize: '1.8rem', overflow: 'hidden', border: '3px solid rgba(255,255,255,0.15)' }}>
+                {(() => {
+                  const callProfile = onlineUsers.find(u => u.id === callState.to || u.id === callState.from) || registeredUsers.find(u => u.id === callState.to || u.id === callState.from);
+                  return callProfile?.avatar ? (
+                    <img src={callProfile.avatar} alt={callState.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ) : callState.nickname?.substring(0, 2).toUpperCase();
+                })()}
                 {callState.status === 'ringing' && <div className="calling-avatar-ring"></div>}
               </div>
-              <div style={{ fontWeight: 600 }}>{callState.nickname}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#fff' }}>{callState.nickname}</div>
+              <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                 {callState.status === 'connected' ? (
-                  <>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
-                    <span>Connected ({formatTime(callDuration)})</span>
-                  </>
+                  <div style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '20px', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block', animation: 'online-breathe 1.5s ease-in-out infinite' }}></span>
+                    <span style={{ color: '#10b981', fontWeight: 700, fontSize: '1rem', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.05em' }}>{formatTime(callDuration)}</span>
+                  </div>
                 ) : (
-                  'Calling...'
+                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', animation: 'online-breathe 1.5s ease-in-out infinite' }}>Calling...</div>
                 )}
               </div>
               
