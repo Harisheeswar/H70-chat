@@ -309,6 +309,8 @@ export default function App() {
   const [auditData, setAuditData] = useState(null);
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
+  const [selectedAuditUser, setSelectedAuditUser] = useState(null);
+  const [selectedAuditChatKey, setSelectedAuditChatKey] = useState(null);
   const totalUnread = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   const currentChatRef = useRef(currentChat);
@@ -2679,6 +2681,13 @@ export default function App() {
     } finally {
       setIsAuditLoading(false);
     }
+  };
+
+  const handleCloseAudit = () => {
+    setIsAuditModalOpen(false);
+    setSelectedAuditUser(null);
+    setSelectedAuditChatKey(null);
+    setAuditSearchQuery('');
   };
 
 
@@ -7646,121 +7655,269 @@ export default function App() {
       )}
       {/* Supervisor Audit Logs Modal */}
       {isAuditModalOpen && auditData && (
-        <div className="bottom-sheet-backdrop" style={{ zIndex: 12000 }} onClick={() => setIsAuditModalOpen(false)}>
+        <div className="bottom-sheet-backdrop" style={{ zIndex: 12000 }} onClick={handleCloseAudit}>
           <div className="bottom-sheet-content animate-slide-up" style={{ maxHeight: '92vh', width: '100%', maxWidth: '900px', display: 'flex', flexDirection: 'column', margin: '0 auto' }} onClick={e => e.stopPropagation()}>
             <div className="bottom-sheet-header">
-              <span className="bottom-sheet-title">🛡️ Supervisor Chat & Media Audit Logs</span>
-              <button className="bottom-sheet-close" onClick={() => setIsAuditModalOpen(false)}><X size={20} /></button>
+              <span className="bottom-sheet-title">
+                {selectedAuditChatKey ? (
+                  <>🛡️ DM History: {selectedAuditUser?.nickname} &amp; {(() => {
+                    const parts = selectedAuditChatKey.split('-');
+                    const otherId = parts[0] === selectedAuditUser?.id ? parts[1] : parts[0];
+                    const otherU = (auditData.users || []).find(u => u.id === otherId);
+                    return otherU ? otherU.nickname : otherId;
+                  })()}</>
+                ) : selectedAuditUser ? (
+                  <>🛡️ Direct Messages of {selectedAuditUser.nickname}</>
+                ) : (
+                  <>🛡️ Supervisor Chat &amp; Media Audit Logs</>
+                )}
+              </span>
+              <button className="bottom-sheet-close" onClick={handleCloseAudit}><X size={20} /></button>
             </div>
             <div className="bottom-sheet-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflowY: 'auto' }}>
               
-              {/* Search & Filters */}
-              <div style={{ display: 'flex', gap: '0.75rem', width: '100%', flexWrap: 'wrap' }}>
-                <input
-                  type="text"
-                  placeholder="Search sender, recipient, content..."
-                  value={auditSearchQuery}
-                  onChange={(e) => setAuditSearchQuery(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1.5px solid var(--border-color)',
-                    background: 'var(--bg-secondary)',
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                    minWidth: '200px'
-                  }}
-                />
-              </div>
+              {/* STATE 3: DM Conversation History */}
+              {selectedAuditUser && selectedAuditChatKey ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ alignSelf: 'flex-start', fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                    onClick={() => setSelectedAuditChatKey(null)}
+                  >
+                    ← Back to DM Chats List
+                  </button>
 
-              {/* Messages Audit Table/List */}
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', minHeight: 0 }}>
-                {(() => {
-                  const filtered = (auditData.messages || []).filter(m => {
-                    const query = auditSearchQuery.toLowerCase();
-                    const matchText = (m.content || '').toLowerCase();
-                    const matchSender = (m.senderNickname || '').toLowerCase() || (m.senderId || '').toLowerCase();
-                    const matchRecipient = (m.recipientId || '').toLowerCase();
-                    const matchType = (m.type || '').toLowerCase();
-                    
-                    return matchText.includes(query) || matchSender.includes(query) || matchRecipient.includes(query) || matchType.includes(query);
-                  });
+                  <input
+                    type="text"
+                    placeholder="Search messages in this chat..."
+                    value={auditSearchQuery}
+                    onChange={(e) => setAuditSearchQuery(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1.5px solid var(--border-color)',
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                      width: '100%'
+                    }}
+                  />
 
-                  if (filtered.length === 0) {
-                    return (
-                      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        No audit records match the current filter.
-                      </div>
-                    );
-                  }
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: 0 }}>
+                    {(() => {
+                      const chatMsgs = (auditData.messages || []).filter(m => m.chatKey === selectedAuditChatKey);
+                      const filteredMsgs = chatMsgs.filter(m => {
+                        const query = auditSearchQuery.toLowerCase();
+                        return (m.content || '').toLowerCase().includes(query) || (m.senderNickname || '').toLowerCase().includes(query);
+                      });
 
-                  return filtered.map(m => {
-                    const isDM = !!m.chatKey;
-                    let recipientNickname = '';
-                    if (isDM && m.recipientId) {
-                      const recUser = (auditData.users || []).find(u => u.id === m.recipientId);
-                      recipientNickname = recUser ? recUser.nickname : m.recipientId;
-                    }
-
-                    return (
-                      <div key={m.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', textAlign: 'left' }}>
-                        
-                        {/* Message Metadata Header */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <span style={{ background: isDM ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)', color: isDM ? '#3b82f6' : '#10b981', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                              {isDM ? '💬 Private DM' : '🏢 Room'}
-                            </span>
-                            {!isDM && m.roomId && (
-                              <span>Room ID: <strong>{m.roomId}</strong></span>
-                            )}
+                      if (filteredMsgs.length === 0) {
+                        return (
+                          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            No messages found.
                           </div>
-                          <span>{new Date(m.createdAt).toLocaleString()}</span>
-                        </div>
+                        );
+                      }
 
-                        {/* Sender & Recipient Details */}
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-                          From: <strong>{m.senderNickname}</strong> <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>({m.senderId})</span>
-                          {isDM && (
-                            <>
-                              {' '}→ To: <strong>{recipientNickname}</strong> <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>({m.recipientId})</span>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Content Area */}
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '8px', wordBreak: 'break-word' }}>
-                          {m.type === 'text' && m.content}
-                          {(m.type === 'image' || m.type === 'image_view_once') && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                              <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>
-                                🖼️ Image {m.type === 'image_view_once' && '(View Once)'}
-                              </span>
-                              {m.mediaUrl ? (
-                                <img
-                                  src={m.mediaUrl}
-                                  alt="Audit Media"
-                                  style={{ maxWidth: '260px', maxHeight: '180px', borderRadius: '6px', cursor: 'pointer', objectFit: 'contain' }}
-                                  onClick={() => window.open(m.mediaUrl, '_blank')}
-                                />
-                              ) : (
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>[Media file URL missing]</span>
+                      return filteredMsgs.map(m => {
+                        const isSenderSelected = m.senderId === selectedAuditUser.id;
+                        return (
+                          <div 
+                            key={m.id} 
+                            style={{ 
+                              background: isSenderSelected ? 'rgba(124, 77, 255, 0.05)' : 'rgba(0, 229, 255, 0.05)', 
+                              border: `1.5px solid ${isSenderSelected ? 'rgba(124, 77, 255, 0.2)' : 'rgba(0, 229, 255, 0.2)'}`, 
+                              borderRadius: '12px', 
+                              padding: '1rem', 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '0.5rem', 
+                              textAlign: 'left' 
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem' }}>
+                              <strong>{m.senderNickname}</strong>
+                              <span>{new Date(m.createdAt).toLocaleString()}</span>
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '8px', wordBreak: 'break-word' }}>
+                              {m.type === 'text' && m.content}
+                              {(m.type === 'image' || m.type === 'image_view_once') && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                  <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>
+                                    🖼️ Image {m.type === 'image_view_once' && '(View Once)'}
+                                  </span>
+                                  {m.mediaUrl ? (
+                                    <img
+                                      src={m.mediaUrl}
+                                      alt="Audit Media"
+                                      style={{ maxWidth: '260px', maxHeight: '180px', borderRadius: '6px', cursor: 'pointer', objectFit: 'contain' }}
+                                      onClick={() => window.open(m.mediaUrl, '_blank')}
+                                    />
+                                  ) : (
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>[Media file URL missing]</span>
+                                  )}
+                                </div>
+                              )}
+                              {m.type === 'audio' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                  <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 600 }}>🎙️ Voice Recording</span>
+                                  {m.mediaUrl && <audio src={m.mediaUrl} controls style={{ maxWidth: '240px', height: '36px' }} />}
+                                </div>
                               )}
                             </div>
-                          )}
-                          {m.type === 'audio' && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                              <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 600 }}>🎙️ Voice Recording</span>
-                              {m.mediaUrl && <audio src={m.mediaUrl} controls style={{ maxWidth: '240px', height: '36px' }} />}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              ) : selectedAuditUser ? (
+                /* STATE 2: DM Chats List */
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ alignSelf: 'flex-start', fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                    onClick={() => { setSelectedAuditUser(null); setAuditSearchQuery(''); }}
+                  >
+                    ← Back to Users List
+                  </button>
+
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Active Conversations for {selectedAuditUser.nickname}:
+                  </h3>
+
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: 0 }}>
+                    {(() => {
+                      // Extract all unique DMs involving the selected user
+                      const userDMs = (auditData.messages || []).filter(m => m.chatKey && (m.senderId === selectedAuditUser.id || m.recipientId === selectedAuditUser.id));
+                      
+                      const uniqueChatKeys = Array.from(new Set(userDMs.map(m => m.chatKey)));
+                      
+                      if (uniqueChatKeys.length === 0) {
+                        return (
+                          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            No active direct message conversations found for this user.
+                          </div>
+                        );
+                      }
+
+                      return uniqueChatKeys.map(chatKey => {
+                        const parts = chatKey.split('-');
+                        const peerId = parts[0] === selectedAuditUser.id ? parts[1] : parts[0];
+                        const peerUser = (auditData.users || []).find(u => u.id === peerId);
+                        const msgCount = userDMs.filter(m => m.chatKey === chatKey).length;
+                        
+                        return (
+                          <div 
+                            key={chatKey} 
+                            style={{ 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border-color)', 
+                              borderRadius: '12px', 
+                              padding: '1rem', 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center', 
+                              gap: '1rem', 
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.1)', 
+                              textAlign: 'left' 
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {peerUser ? peerUser.nickname : peerId}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                User ID: {peerId} | {msgCount} Message{msgCount > 1 ? 's' : ''} Exchanged
+                              </div>
                             </div>
-                          )}
+                            <button 
+                              className="btn btn-primary" 
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                              onClick={() => { setSelectedAuditChatKey(chatKey); setAuditSearchQuery(''); }}
+                            >
+                              View History 🔍
+                            </button>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                /* STATE 1: Users List */
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
+                  <input
+                    type="text"
+                    placeholder="Search users by nickname or email..."
+                    value={auditSearchQuery}
+                    onChange={(e) => setAuditSearchQuery(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1.5px solid var(--border-color)',
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                      width: '100%'
+                    }}
+                  />
+
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: 0 }}>
+                    {(() => {
+                      const filteredUsers = (auditData.users || []).filter(u => {
+                        const query = auditSearchQuery.toLowerCase();
+                        return (u.nickname || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query);
+                      });
+
+                      if (filteredUsers.length === 0) {
+                        return (
+                          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            No users match the search query.
+                          </div>
+                        );
+                      }
+
+                      return filteredUsers.map(u => (
+                        <div 
+                          key={u.id} 
+                          style={{ 
+                            background: 'var(--bg-secondary)', 
+                            border: '1px solid var(--border-color)', 
+                            borderRadius: '12px', 
+                            padding: '1rem', 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center', 
+                            gap: '1rem', 
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)', 
+                            textAlign: 'left' 
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <strong style={{ color: 'var(--text-primary)' }}>{u.nickname}</strong>
+                              <span style={{ fontSize: '0.62rem', background: 'rgba(20, 184, 166, 0.15)', color: 'var(--bg-accent-teal)', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                                Level {u.level || 1}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                              ID: {u.id} | Email: {u.email} | Role: {u.role}
+                            </div>
+                          </div>
+                          <button 
+                            className="btn btn-primary" 
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                            onClick={() => { setSelectedAuditUser(u); setAuditSearchQuery(''); }}
+                          >
+                            Audit Direct Messages 🔍
+                          </button>
                         </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
 
             </div>
           </div>
