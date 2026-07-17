@@ -615,6 +615,59 @@ export default function App() {
     return 'none';
   };
 
+  const handleSendFriendRequest = async (friendId) => {
+    if (!friendId || !token) return;
+    try {
+      const res = await fetch('/api/friends/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ friendId })
+      });
+      const updated = await res.json();
+      if (res.ok) setUser(updated);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleAcceptFriend = async (friendId) => {
+    // Accepting = also calling friends/add on our side (mutual add = friends)
+    await handleSendFriendRequest(friendId);
+    // Refresh registered users so the badge updates
+    fetchAllUsers();
+  };
+
+  const handleDeclineFriend = async (friendId) => {
+    // Declining = no action needed on our side, just refresh UI
+    // (the other person already added us; we just don't add back)
+    // Optionally could block or just ignore — for now just refresh
+    fetchAllUsers();
+  };
+
+  const handleRemoveFriend = async (friendId) => {
+    if (!friendId || !token) return;
+    try {
+      const res = await fetch('/api/friends/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ friendId })
+      });
+      const updated = await res.json();
+      if (res.ok) setUser(updated);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleUnblockUser = async (blockId) => {
+    if (!blockId || !token) return;
+    try {
+      const res = await fetch('/api/block/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ blockId })
+      });
+      const updated = await res.json();
+      if (res.ok) setUser(updated);
+    } catch (err) { console.error(err); }
+  };
+
   const checkIsMutualFriend = (recipientId) => {
     if (!user) return false;
     if (user.friends?.includes(recipientId)) return true;
@@ -3450,7 +3503,7 @@ export default function App() {
                       onClick={() => setPeopleTab('requests')}
                       style={{ background: 'transparent', border: 'none', fontSize: '0.78rem', fontWeight: peopleTab === 'requests' ? 800 : 500, color: peopleTab === 'requests' ? '#3b82f6' : 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px' }}
                     >
-                      FRIEND REQUESTS [{user?.friendRequests?.length || 0}]
+                      FRIEND REQUESTS [{(registeredUsers.length ? registeredUsers : onlineUsers).filter(u => user?.friendRequests?.includes(u.id)).length || user?.friendRequests?.length || 0}]
                     </button>
                     <button 
                       onClick={() => setPeopleTab('blocked')}
@@ -3476,59 +3529,73 @@ export default function App() {
                   {/* Filter Content */}
                   <div style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '0.25rem 0' }}>
                     {peopleTab === 'friends' && (() => {
-                      const friendsList = onlineUsers.filter(u => user?.friends?.includes(u.id) && u.nickname.toLowerCase().includes(searchPeopleQuery.toLowerCase()));
+                      const friendsList = (registeredUsers.length ? registeredUsers : onlineUsers)
+                        .filter(u => user?.friends?.includes(u.id) && u.nickname.toLowerCase().includes(searchPeopleQuery.toLowerCase()));
                       if (friendsList.length === 0) {
-                        return <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No friends found.</div>;
+                        return <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No friends yet. Use "ADD FRIEND" to find people.</div>;
                       }
-                      return friendsList.map(u => (
-                        <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
-                          <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#3b82f6', color: '#fff', fontWeight: 'bold' }}>
-                            {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                      return friendsList.map(u => {
+                        const isOnline = onlineUsers.some(o => o.id === u.id);
+                        return (
+                          <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                            <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
+                              <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#3b82f6', color: '#fff', fontWeight: 'bold' }}>
+                                {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                              </div>
+                              {isOnline && <span style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: '#10b981', border: '2px solid var(--bg-primary)' }} />}
+                            </div>
+                            <div style={{ flex: 1, textAlign: 'left', cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
+                              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
+                              <div style={{ fontSize: '0.68rem', color: isOnline ? '#10b981' : 'var(--text-muted)' }}>{isOnline ? '● Online' : 'Offline'}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <button style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', padding: 0 }} onClick={() => { handleSelectChat(u, 'dm'); setCurrentNav('chat'); setActiveTab('dms'); }} title="Chat">💬</button>
+                              <button style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#ef4444', padding: 0 }} onClick={() => handleRemoveFriend(u.id)} title="Remove Friend">✕</button>
+                            </div>
                           </div>
-                          <div style={{ flex: 1, textAlign: 'left' }}>
-                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
-                          </div>
-                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <button style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', padding: 0 }} onClick={() => handleSelectChat(u, 'dm')} title="Chat">💬</button>
-                            <span style={{ color: '#10b981' }}>✓</span>
-                            <button style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', cursor: 'pointer', color: '#ef4444', padding: 0 }} onClick={() => handleRemoveFriend(u.id)} title="Remove Friend">✕</button>
-                            <button style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => setActiveUserActionMenu(u)}>⋮</button>
-                          </div>
-                        </div>
-                      ));
+                        );
+                      });
                     })()}
 
                     {peopleTab === 'requests' && (() => {
-                      const requestsList = onlineUsers.filter(u => user?.friendRequests?.includes(u.id));
+                      const allUsers = registeredUsers.length ? registeredUsers : onlineUsers;
+                      const requestsList = allUsers.filter(u => user?.friendRequests?.includes(u.id));
                       if (requestsList.length === 0) {
                         return <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No pending friend requests.</div>;
                       }
-                      return requestsList.map(u => (
-                        <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
-                          <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#3b82f6', color: '#fff', fontWeight: 'bold' }}>
-                            {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                      return requestsList.map(u => {
+                        const isOnline = onlineUsers.some(o => o.id === u.id);
+                        return (
+                          <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                            <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
+                              <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#3b82f6', color: '#fff', fontWeight: 'bold' }}>
+                                {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                              </div>
+                              {isOnline && <span style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: '#10b981', border: '2px solid var(--bg-primary)' }} />}
+                            </div>
+                            <div style={{ flex: 1, textAlign: 'left', cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
+                              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Wants to be your friend</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                              <button className="btn btn-primary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.72rem' }} onClick={() => handleAcceptFriend(u.id)} title="Accept">✓ Accept</button>
+                              <button className="btn btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.72rem' }} onClick={() => handleDeclineFriend(u.id)} title="Decline">✕</button>
+                            </div>
                           </div>
-                          <div style={{ flex: 1, textAlign: 'left' }}>
-                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
-                          </div>
-                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <button style={{ background: 'transparent', border: 'none', fontSize: '0.95rem', cursor: 'pointer', color: '#10b981', padding: 0 }} onClick={() => handleAcceptFriend(u.id)} title="Accept">✓</button>
-                            <button style={{ background: 'transparent', border: 'none', fontSize: '0.95rem', cursor: 'pointer', color: '#ef4444', padding: 0 }} onClick={() => handleDeclineFriend(u.id)} title="Decline">✕</button>
-                            <button style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }} onClick={() => setActiveUserActionMenu(u)}>⋮</button>
-                          </div>
-                        </div>
-                      ));
+                        );
+                      });
                     })()}
 
                     {peopleTab === 'blocked' && (() => {
-                      const blockedList = onlineUsers.filter(u => user?.blocked?.includes(u.id));
+                      const allUsers = registeredUsers.length ? registeredUsers : onlineUsers;
+                      const blockedList = allUsers.filter(u => user?.blockedUsers?.includes(u.id) || user?.blocked?.includes(u.id));
                       if (blockedList.length === 0) {
                         return <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No blocked users.</div>;
                       }
                       return blockedList.map(u => (
                         <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
                           <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#777', color: '#fff', fontWeight: 'bold' }}>
-                            {u.nickname.substring(0, 1).toUpperCase()}
+                            {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
                           </div>
                           <div style={{ flex: 1, textAlign: 'left' }}>
                             <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{u.nickname}</div>
@@ -3540,29 +3607,56 @@ export default function App() {
                       ));
                     })()}
 
-                    {peopleTab === 'add' && (
-                      <div style={{ padding: '1rem' }}>
-                        <form onSubmit={(e) => {
-                          e.preventDefault();
-                          const target = e.target.elements.addName.value.trim();
-                          if (target) {
-                            handleSendFriendRequestByName(target);
-                            e.target.reset();
-                          }
-                        }}>
-                          <input 
-                            type="text" 
-                            name="addName"
-                            placeholder="Enter friend's nickname..." 
-                            style={{ width: '100%', padding: '0.65rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none', marginBottom: '0.75rem' }}
-                            required
-                          />
-                          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700 }}>
-                            SEND FRIEND REQUEST
-                          </button>
-                        </form>
-                      </div>
-                    )}
+                    {peopleTab === 'add' && (() => {
+                      // Show all registered users not already friends, with search filter
+                      const allUsers = registeredUsers.length ? registeredUsers : onlineUsers;
+                      const browseable = allUsers.filter(u =>
+                        u.id !== user?.id &&
+                        !user?.friends?.includes(u.id) &&
+                        !user?.blockedUsers?.includes(u.id) &&
+                        u.nickname.toLowerCase().includes(searchPeopleQuery.toLowerCase())
+                      );
+                      return (
+                        <div>
+                          <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {browseable.length} people you can add
+                          </div>
+                          {browseable.length === 0 ? (
+                            <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              {searchPeopleQuery ? 'No users found matching your search.' : 'No new users to add right now.'}
+                            </div>
+                          ) : browseable.map(u => {
+                            const isOnline = onlineUsers.some(o => o.id === u.id);
+                            const hasSentRequest = u.friendRequests?.includes(user?.id);
+                            const hasReceivedRequest = user?.friendRequests?.includes(u.id);
+                            return (
+                              <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                                <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
+                                  <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 'bold' }}>
+                                    {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                                  </div>
+                                  {isOnline && <span style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: '#10b981', border: '2px solid var(--bg-primary)' }} />}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
+                                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nickname}</div>
+                                  <div style={{ fontSize: '0.68rem', color: isOnline ? '#10b981' : 'var(--text-muted)' }}>{isOnline ? '● Online' : 'Offline'}</div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexShrink: 0 }}>
+                                  <button style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', cursor: 'pointer', padding: '2px 4px' }} title="Send message" onClick={() => { handleSelectChat(u, 'dm'); setCurrentNav('chat'); setActiveTab('dms'); }}>💬</button>
+                                  {hasReceivedRequest ? (
+                                    <button className="btn btn-primary" style={{ padding: '0.2rem 0.55rem', fontSize: '0.68rem' }} onClick={() => handleAcceptFriend(u.id)}>✓ Accept</button>
+                                  ) : (
+                                    <button className="btn btn-secondary" style={{ padding: '0.2rem 0.55rem', fontSize: '0.68rem', opacity: hasSentRequest ? 0.6 : 1 }} disabled={hasSentRequest} onClick={() => !hasSentRequest && handleSendFriendRequest(u.id)}>
+                                      {hasSentRequest ? 'Sent ✓' : '+ Add'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -4371,6 +4465,13 @@ export default function App() {
                         {(() => {
                           const recipient = onlineUsers.find(u => u.id === currentChat.id) || registeredUsers.find(u => u.id === currentChat.id);
                           if (!recipient) return '💬 Direct Message';
+                          const state = getFriendshipState(recipient);
+                          if (state === 'received') return (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ color: '#f59e0b' }}>● Friend request</span>
+                              <button className="btn btn-primary" style={{ padding: '1px 8px', fontSize: '0.65rem', height: '18px', lineHeight: 1 }} onClick={() => handleAcceptFriend(recipient.id)}>Accept</button>
+                            </span>
+                          );
                           return recipient.isOnline ? (
                             <span style={{ color: '#10b981', fontWeight: 600 }}>● Online</span>
                           ) : `Last seen ${formatLastSeen(recipient.lastSeen)}`;
@@ -6716,6 +6817,20 @@ export default function App() {
             >
               <MicOff size={16} />
             </button>
+
+            {/* View caller's profile */}
+            <button
+              className="control-circle-btn"
+              title="View profile"
+              onClick={() => {
+                const callUserId = callState.from || callState.to;
+                const profile = onlineUsers.find(u => u.id === callUserId) || registeredUsers.find(u => u.id === callUserId);
+                if (profile) setSelectedProfileUser(profile);
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </button>
+
             <button 
               className="control-circle-btn btn-hangup-control" 
               onClick={hangUpCall}
