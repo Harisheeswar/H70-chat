@@ -238,6 +238,9 @@ export default function App() {
   const [roomCallDuration, setRoomCallDuration] = useState(0);
   const roomCallTimerRef = useRef(null);
 
+  const ringtoneAudioContextRef = useRef(null);
+  const ringtoneIntervalRef = useRef(null);
+
   const iceCandidatesQueueRef = useRef([]);
   const roomIceQueueRef = useRef({}); // socketId -> array of candidates
 
@@ -370,6 +373,85 @@ export default function App() {
     isTypingRef.current = false;
     setOpenReactionPickerFor(null);
   }, [currentChat]);
+
+  const startRingingSound = () => {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      const ctx = new AudioContextClass();
+      ringtoneAudioContextRef.current = ctx;
+
+      const playRingPair = () => {
+        // Synthesize standard dual-frequency telephone ring (440Hz + 480Hz)
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        osc1.type = 'sine';
+        osc1.frequency.value = 440;
+        osc2.type = 'sine';
+        osc2.frequency.value = 480;
+
+        // Vibrate phone synchronously (on Android/Chrome)
+        if (navigator.vibrate) {
+          navigator.vibrate([800, 400, 800]);
+        }
+
+        // Ring duration profile
+        gainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0.15, ctx.currentTime + 1.8);
+        gainNode.gain.linearRampToValueAtTime(0.0, ctx.currentTime + 2.0);
+
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        osc1.start();
+        osc2.start();
+        osc1.stop(ctx.currentTime + 2.0);
+        osc2.stop(ctx.currentTime + 2.0);
+      };
+
+      // Initial ring
+      playRingPair();
+
+      // Ring loop every 3 seconds
+      ringtoneIntervalRef.current = setInterval(() => {
+        playRingPair();
+      }, 3000);
+    } catch (err) {
+      console.warn('Ringtone sound synthesis blocked or failed:', err);
+    }
+  };
+
+  const stopRingingSound = () => {
+    if (ringtoneIntervalRef.current) {
+      clearInterval(ringtoneIntervalRef.current);
+      ringtoneIntervalRef.current = null;
+    }
+    if (ringtoneAudioContextRef.current) {
+      try {
+        ringtoneAudioContextRef.current.close();
+      } catch (e) {}
+      ringtoneAudioContextRef.current = null;
+    }
+    if (navigator.vibrate) {
+      navigator.vibrate(0);
+    }
+  };
+
+  useEffect(() => {
+    if (callState && callState.status === 'incoming') {
+      startRingingSound();
+    } else {
+      stopRingingSound();
+    }
+    return () => {
+      stopRingingSound();
+    };
+  }, [callState]);
 
   useEffect(() => {
     if (theme === 'light') {
@@ -6457,7 +6539,7 @@ export default function App() {
 
       {/* 5. Incoming 1-on-1 Call Request Ringing Overlay */}
       {callState && callState.status === 'incoming' && (
-        <div className="modal-overlay">
+        <div className="modal-overlay call-incoming-overlay">
           <div className="call-modal">
             <div className="calling-user-avatar">
               {callState.nickname?.substring(0, 2).toUpperCase()}

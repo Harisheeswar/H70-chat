@@ -1077,15 +1077,33 @@ input, button, textarea {
 }
 
 /* Calling Widget Overlay (Ringing / Calling Pane) */
+.call-incoming-overlay {
+  z-index: 99999 !important;
+  background: rgba(10, 11, 14, 0.96) !important;
+  backdrop-filter: blur(14px) !important;
+}
+
 .call-modal {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  border: 2px solid rgba(124, 77, 255, 0.3);
   width: 100%;
   max-width: 460px;
   border-radius: 24px;
   padding: 2.5rem 2rem;
   text-align: center;
-  box-shadow: var(--glass-shadow);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  animation: callModalPulse 2.5s infinite alternate ease-in-out;
+}
+
+@keyframes callModalPulse {
+  0% {
+    border-color: rgba(124, 77, 255, 0.4);
+    box-shadow: 0 0 20px rgba(124, 77, 255, 0.25), 0 10px 40px rgba(0, 0, 0, 0.5);
+  }
+  100% {
+    border-color: rgba(0, 229, 255, 0.85);
+    box-shadow: 0 0 35px rgba(0, 229, 255, 0.55), 0 10px 40px rgba(0, 0, 0, 0.5);
+  }
 }
 
 .calling-user-avatar {
