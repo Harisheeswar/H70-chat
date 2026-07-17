@@ -1877,19 +1877,17 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
       if (currentChat.type === 'room') {
-        socketRef.current?.emit('room-message', {
+        socketRef.current?.emit('send-room-message', {
           roomId: currentChat.id,
-          content: '',
-          mediaUrl: data.url,
-          mediaType: 'image'
+          type: 'image',
+          content: data.url
         });
       } else {
-        socketRef.current?.emit('direct-message', {
+        socketRef.current?.emit('send-direct-message', {
           recipientId: currentChat.id,
-          content: '',
-          mediaUrl: data.url,
-          mediaType: 'image',
-          isViewOnce: false
+          type: 'image',
+          content: data.url,
+          viewsRemaining: null
         });
       }
       stopWebcam();
