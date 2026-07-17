@@ -3265,3 +3265,87 @@ input:checked + .switch-slider:before {
   box-shadow: 0 0 10px rgba(20,184,166,0.5);
 }
 
+
+/* ============================================================
+   COMPREHENSIVE RESPONSIVE FIX — phone & desktop
+   ============================================================ */
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 8px rgba(239,68,68,0.3);
+}
+.btn-danger:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(239,68,68,0.4); }
+.btn-danger:active { transform: translateY(0); }
+
+.mobile-back-btn { display: none; }
+
+@media (min-width: 769px) {
+  .app-layout { display: flex; height: 100dvh; width: 100vw; overflow: hidden; }
+  .vertical-nav-bar { flex-shrink: 0; height: 100dvh; overflow-y: auto; overflow-x: hidden; }
+  .sidebar { flex-shrink: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  .main-content-pane { flex: 1; min-width: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  .chat-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  .messages-list { flex: 1; overflow-y: auto; min-height: 0; }
+  .chat-input-bar { flex-shrink: 0; }
+}
+
+@media (max-width: 768px) {
+  .mobile-back-btn { display: flex !important; }
+
+  .auth-card { margin: 1rem; padding: 1.5rem 1.1rem; border-radius: 16px; max-width: calc(100vw - 2rem); }
+  .auth-logo { font-size: 2rem; }
+  .auth-input { font-size: 16px !important; }
+
+  .vertical-nav-bar { width: 60px !important; min-width: 60px !important; position: fixed !important; top: 0; left: 0 !important; height: 100dvh; z-index: 1000; transition: none; overflow: hidden; }
+  .sidebar { position: fixed !important; top: 0; left: -320px !important; width: 280px !important; min-width: 280px !important; height: 100dvh; z-index: 1001; transition: left 0.28s cubic-bezier(0.4,0,0.2,1); overflow-y: auto; overflow-x: hidden; }
+  .app-layout.mobile-menu-open .sidebar { left: 60px !important; }
+  .app-layout.mobile-menu-open::before { content: ''; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; backdrop-filter: blur(2px); }
+  .main-content-pane { position: fixed !important; top: 0; left: 60px !important; width: calc(100vw - 60px) !important; height: 100dvh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; }
+  .app-layout.chat-list-view .sidebar { position: fixed !important; left: 60px !important; width: calc(100vw - 60px) !important; min-width: unset !important; box-shadow: none !important; z-index: 50; }
+  .app-layout.chat-list-view .main-content-pane { display: none !important; }
+  .app-layout.chat-list-view.mobile-menu-open .sidebar { left: 60px !important; }
+
+  .chat-pane { flex: 1 1 0 !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; min-height: 0 !important; }
+  .chat-header { flex-shrink: 0 !important; min-height: 54px; padding: 0.5rem 0.6rem !important; }
+  .chat-header-title { font-size: 0.88rem !important; max-width: 140px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+  .chat-actions { gap: 0.15rem !important; flex-shrink: 0 !important; }
+  .action-btn { width: 30px !important; height: 30px !important; padding: 4px !important; }
+  .messages-list { flex: 1 1 0 !important; overflow-y: auto !important; overflow-x: hidden !important; padding: 0.5rem 0.6rem !important; min-height: 0 !important; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
+  .message-bubble { max-width: 75vw !important; font-size: 0.9rem !important; word-break: break-word !important; overflow-wrap: anywhere !important; }
+
+  .featured-rooms-container { padding: 0.75rem 0.6rem !important; overflow-y: auto !important; height: 100% !important; }
+  .featured-rooms-list { grid-template-columns: 1fr !important; gap: 0.75rem !important; }
+  .featured-rooms-card { padding: 1rem !important; }
+
+  .people-pane-container { padding: 0.75rem 0.6rem !important; overflow-y: auto !important; height: 100% !important; }
+  .people-pane-wrapper { max-width: 100% !important; padding: 0 !important; }
+  .people-pane-tabs { flex-wrap: wrap !important; gap: 0.25rem !important; }
+  .people-pane-tab-btn { font-size: 0.7rem !important; padding: 0.35rem 0.55rem !important; }
+
+  .white-dashboard { padding: 0.75rem !important; overflow-y: auto !important; height: 100% !important; }
+  .white-dashboard-grid { grid-template-columns: 1fr !important; gap: 0.75rem !important; }
+
+  .white-modal-content, .modal-content { width: calc(100vw - 2rem) !important; max-width: 100% !important; max-height: 90dvh !important; overflow-y: auto !important; margin: 1rem !important; border-radius: 16px !important; }
+  .profile-drawer { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 1002 !important; overflow-y: auto !important; border-radius: 0 !important; }
+  .user-action-popup-content { max-height: 88dvh !important; overflow-y: auto !important; width: calc(100vw - 2rem) !important; }
+
+  .reaction-picker-popup { left: 0 !important; right: auto !important; max-width: calc(100vw - 2rem) !important; }
+  .message-reactions-row.outgoing .reaction-picker-popup { left: auto !important; right: 0 !important; }
+}
+
+@media (max-width: 359px) {
+  .vertical-nav-bar { width: 52px !important; min-width: 52px !important; }
+  .main-content-pane { left: 52px !important; width: calc(100vw - 52px) !important; }
+  .app-layout.chat-list-view .sidebar { left: 52px !important; width: calc(100vw - 52px) !important; }
+  .app-layout.mobile-menu-open .sidebar { left: 52px !important; }
+  .message-bubble { max-width: 82vw !important; }
+  .chat-header-title { max-width: 100px !important; }
+  .action-btn { width: 26px !important; height: 26px !important; }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .sidebar { width: 260px !important; min-width: 260px !important; }
+  .featured-rooms-list { grid-template-columns: 1fr !important; }
+}

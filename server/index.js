@@ -475,6 +475,14 @@ app.post('/api/messages/clear', authenticateToken, (req, res) => {
 const activeSockets = new Map(); // socket.id -> { userId, nickname, level, xp }
 const activeUsers = new Map(); // userId -> socket.id (for easy 1-on-1 routing)
 
+// Attaches live Socket.io room member counts to each room object
+function getRoomsWithLiveCounts() {
+  return db.getRooms().map(room => ({
+    ...room,
+    onlineCount: io.sockets.adapter.rooms.get(room.id)?.size || 0
+  }));
+}
+
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 
@@ -542,7 +550,7 @@ io.on('connection', (socket) => {
     // Confirm connection
     socket.emit('ready', { 
       user: userDetails, 
-      rooms: db.getRooms(),
+      rooms: getRoomsWithLiveCounts(),
       unreadCounts: db.getUnreadDmCounts(userDetails.id),
       dmContacts: userDetails.isGuest ? [] : getDmContactsWithProfiles(userDetails.id)
     });
@@ -616,7 +624,7 @@ io.on('connection', (socket) => {
       io.to(roomId).emit('room-admins-updated', { roomId, admins: updatedAdmins });
       
       // Update global room lists to refresh caches
-      io.emit('rooms-updated', db.getRooms());
+      io.emit('rooms-updated', getRoomsWithLiveCounts());
     }
   });
 
@@ -639,7 +647,7 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('room-avatar-updated', { roomId, avatar: avatarUrl });
 
     // Update global room lists
-    io.emit('rooms-updated', db.getRooms());
+    io.emit('rooms-updated', getRoomsWithLiveCounts());
   });
 
   // Delete Room (Supervisor or Room Creator only)
@@ -663,7 +671,7 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('room-deleted', roomId);
 
     // Refresh global rooms lists
-    io.emit('rooms-updated', db.getRooms());
+    io.emit('rooms-updated', getRoomsWithLiveCounts());
   });
 
   // Kick User (Supervisor only)
