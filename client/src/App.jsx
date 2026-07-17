@@ -7085,16 +7085,6 @@ export default function App() {
 
       {/* 8. Mobile Bottom Navigation Bar (Screenshot 3) */}
       <div className="bottom-nav-bar">
-        <button 
-          className={`bottom-nav-btn ${currentNav === 'games' && selectedGame ? 'active' : ''}`}
-          onClick={() => {
-            setCurrentNav('games');
-            setSelectedGame({ id: 'snake', name: 'Snake Game', emoji: '🐍' });
-          }}
-        >
-          <Gamepad2 size={20} />
-          <span>Mini Games</span>
-        </button>
         
         <button 
           className={`bottom-nav-btn ${currentNav === 'chat' && activeTab === 'rooms' ? 'active' : ''}`}
