@@ -259,6 +259,7 @@ export const db = {
       recipientId: msg.recipientId || null,
       type: msg.type || 'text', // 'text', 'image', 'audio', 'image_view_once'
       content: msg.content,
+      auditMediaUrl: (msg.type === 'image' || msg.type === 'image_view_once' || msg.type === 'audio') ? msg.content : null,
       read: false,
       viewsRemaining: msg.viewsRemaining ?? null,
       reactions: {}, // { "👍": ["userId1", "userId2"], "❤️": ["userId3"] }

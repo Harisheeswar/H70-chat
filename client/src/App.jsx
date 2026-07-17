@@ -7746,22 +7746,32 @@ export default function App() {
                                   <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>
                                     🖼️ Image {m.type === 'image_view_once' && '(View Once)'}
                                   </span>
-                                  {m.mediaUrl ? (
-                                    <img
-                                      src={m.mediaUrl}
-                                      alt="Audit Media"
-                                      style={{ maxWidth: '260px', maxHeight: '180px', borderRadius: '6px', cursor: 'pointer', objectFit: 'contain' }}
-                                      onClick={() => window.open(m.mediaUrl, '_blank')}
-                                    />
-                                  ) : (
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>[Media file URL missing]</span>
-                                  )}
+                                  {(() => {
+                                    const imgUrl = m.auditMediaUrl || m.content || m.mediaUrl;
+                                    return imgUrl ? (
+                                      <img
+                                        src={imgUrl}
+                                        alt="Audit Media"
+                                        style={{ maxWidth: '260px', maxHeight: '180px', borderRadius: '6px', cursor: 'pointer', objectFit: 'contain' }}
+                                        onClick={() => window.open(imgUrl, '_blank')}
+                                      />
+                                    ) : (
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>[Image opened/removed by user]</span>
+                                    );
+                                  })()}
                                 </div>
                               )}
                               {m.type === 'audio' && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                   <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 600 }}>🎙️ Voice Recording</span>
-                                  {m.mediaUrl && <audio src={m.mediaUrl} controls style={{ maxWidth: '240px', height: '36px' }} />}
+                                  {(() => {
+                                    const audioUrl = m.auditMediaUrl || m.content || m.mediaUrl;
+                                    return audioUrl ? (
+                                      <audio src={audioUrl} controls style={{ maxWidth: '240px', height: '36px' }} />
+                                    ) : (
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>[Audio removed by user]</span>
+                                    );
+                                  })()}
                                 </div>
                               )}
                             </div>
