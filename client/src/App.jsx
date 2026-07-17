@@ -5,7 +5,7 @@ import {
   Video, Phone, PhoneOff, MicOff, VideoOff, Edit, X, Compass, Award, 
   BookOpen, LogOut, CheckCircle, Mail, Key, ShieldAlert,
   Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu, Gamepad2,
-  DoorOpen, MessageCircle, Contact, Dices, Share, Camera, Sliders
+  DoorOpen, MessageCircle, Contact, Dices, Share, Camera, Sliders, Eye
 } from 'lucide-react';
 
 import { ANIMALS_LIST } from './animals';
