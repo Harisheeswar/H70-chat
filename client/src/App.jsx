@@ -202,6 +202,9 @@ export default function App() {
 
   // Webcam Capture States
   const [isWebcamOpen, setIsWebcamOpen] = useState(false);
+  const [selectedWebcamFilter, setSelectedWebcamFilter] = useState('none');
+  const [capturedPhotoBlob, setCapturedPhotoBlob] = useState(null);
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState(null);
   const webcamVideoRef = useRef(null);
   const webcamStreamRef = useRef(null);
 
@@ -1616,6 +1619,21 @@ export default function App() {
     else if (filterType === 'dreamy') ctx.filter = 'blur(0.5px) saturate(1.2) brightness(1.05)';
     else if (filterType === 'highsat') ctx.filter = 'saturate(2.2) contrast(1.1)';
     else if (filterType === 'retrocool') ctx.filter = 'hue-rotate(180deg) saturate(1.4)';
+    
+    // MagicCamera GPUImage filters
+    else if (filterType === 'amaro') ctx.filter = 'contrast(1.1) brightness(1.15) saturate(1.1) sepia(0.15) hue-rotate(-10deg)';
+    else if (filterType === 'brooklyn') ctx.filter = 'contrast(0.9) brightness(1.1) saturate(1.1) sepia(0.1) hue-rotate(15deg)';
+    else if (filterType === 'earlybird') ctx.filter = 'sepia(0.6) contrast(1.2) brightness(0.9) saturate(0.85)';
+    else if (filterType === 'hudson') ctx.filter = 'contrast(1.2) brightness(1.05) saturate(1.1) hue-rotate(180deg) sepia(0.1)';
+    else if (filterType === 'lomo') ctx.filter = 'saturate(1.6) contrast(1.3) brightness(0.9) sepia(0.1)';
+    else if (filterType === 'nashville') ctx.filter = 'sepia(0.25) saturate(1.2) contrast(1.15) brightness(1.1) hue-rotate(330deg)';
+    else if (filterType === 'valencia') ctx.filter = 'contrast(1.08) brightness(1.08) sepia(0.25) saturate(0.95)';
+    else if (filterType === 'sketch') ctx.filter = 'grayscale(1) contrast(3) brightness(1.5)';
+    else if (filterType === 'sunset') ctx.filter = 'sepia(0.4) saturate(1.8) hue-rotate(350deg) brightness(1.05)';
+    else if (filterType === 'sakura') ctx.filter = 'saturate(1.3) contrast(1.05) brightness(1.1) hue-rotate(310deg) sepia(0.1)';
+    else if (filterType === 'beauty') ctx.filter = 'brightness(1.05) contrast(0.95) saturate(1.1) blur(0.2px)';
+    else if (filterType === 'cool') ctx.filter = 'hue-rotate(190deg) saturate(1.2) brightness(1.05)';
+    else if (filterType === 'inkwell') ctx.filter = 'grayscale(1) contrast(1.2) brightness(1.05)';
   };
 
   const handleImageSelect = (e, viewOnce = false) => {
@@ -1639,6 +1657,9 @@ export default function App() {
   const startWebcam = async () => {
     if (!currentChat) return;
     setIsWebcamOpen(true);
+    setSelectedWebcamFilter('none');
+    setCapturedPhotoBlob(null);
+    setCapturedPhotoUrl(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       webcamStreamRef.current = stream;
@@ -1660,6 +1681,11 @@ export default function App() {
       webcamStreamRef.current.getTracks().forEach(t => t.stop());
       webcamStreamRef.current = null;
     }
+    if (capturedPhotoUrl) {
+      URL.revokeObjectURL(capturedPhotoUrl);
+    }
+    setCapturedPhotoBlob(null);
+    setCapturedPhotoUrl(null);
     setIsWebcamOpen(false);
   };
 
@@ -1670,19 +1696,60 @@ export default function App() {
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext('2d');
+    
+    // Apply selected live filter to the canvas drawing context
+    applyFilterToCanvas(ctx, canvas.width, canvas.height, selectedWebcamFilter);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    fetch(dataUrl)
-      .then(r => r.blob())
-      .then(blob => {
-        const file = new File([blob], 'webcam_snapshot.jpg', { type: 'image/jpeg' });
-        setSelectedImageFile(file);
-        setIsViewOnceImage(false);
-        setSelectedImageFilter('none');
-        setImagePreviewUrl(dataUrl);
-        setIsFilterModalOpen(true);
-        stopWebcam();
+    ctx.filter = 'none'; // reset filter
+    
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        alert('Failed to process image capture.');
+        return;
+      }
+      
+      const url = URL.createObjectURL(blob);
+      setCapturedPhotoBlob(blob);
+      setCapturedPhotoUrl(url);
+    }, 'image/jpeg', 0.92);
+  };
+
+  const sendCapturedWebcamPhoto = async () => {
+    if (!capturedPhotoBlob || !currentChat) return;
+
+    const file = new File([capturedPhotoBlob], 'webcam_snapshot.jpg', { type: 'image/jpeg' });
+    const formData = new FormData();
+    formData.append('media', file);
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+      if (currentChat.type === 'room') {
+        socketRef.current?.emit('room-message', {
+          roomId: currentChat.id,
+          content: '',
+          mediaUrl: data.url,
+          mediaType: 'image'
+        });
+      } else {
+        socketRef.current?.emit('direct-message', {
+          recipientId: currentChat.id,
+          content: '',
+          mediaUrl: data.url,
+          mediaType: 'image',
+          isViewOnce: false
+        });
+      }
+      stopWebcam();
+    } catch (err) {
+      console.error('Failed to send webcam photo:', err);
+      alert('Failed to send captured photo: ' + err.message);
+    }
   };
 
   // Video call filter change
@@ -4721,8 +4788,17 @@ export default function App() {
                           <Sliders size={14} />
                         </button>
                         {isCallFilterOpen && (
-                          <div className="call-filter-panel" onClick={e => e.stopPropagation()}>
-                            {[['none','Normal'],['sepia','Sepia'],['grayscale','B&W'],['cyberpunk','Cyber'],['vintage','Vintage'],['polaroid','Polar'],['gothic','Gothic'],['popart','Pop Art'],['neongold','Neon'],['dreamy','Dreamy'],['highsat','Vivid'],['retrocool','Retro'],['invert','Invert'],['duotoneteal','Teal']].map(([key,label]) => (
+                          <div className="call-filter-panel" onClick={e => e.stopPropagation()} style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                            {[
+                              ['none','Normal'],['sepia','Sepia'],['grayscale','B&W'],['invert','Invert'],
+                              ['cyberpunk','Cyberpunk'],['vintage','Vintage'],['polaroid','Polaroid'],['gothic','Gothic'],
+                              ['popart','Pop Art'],['neongold','Neon Gold'],['duotoneteal','Teal'],['dreamy','Dreamy'],
+                              ['highsat','Vivid'],['retrocool','Retro'],
+                              ['amaro','Amaro ✨'],['brooklyn','Brooklyn 🌿'],['earlybird','Earlybird 🌅'],
+                              ['hudson','Hudson ❄️'],['lomo','Lomo 📷'],['nashville','Nashville 🌸'],
+                              ['valencia','Valencia ☀️'],['sketch','Sketch ✏️'],['sunset','Sunset 🌇'],
+                              ['sakura','Sakura 🌺'],['beauty','Beauty 💄'],['cool','Cool Breeze 🌊'],['inkwell','Inkwell 🔲']
+                            ].map(([key,label]) => (
                               <button
                                 key={key}
                                 className={`call-filter-chip ${localVideoFilter === key ? 'active' : ''}`}
@@ -6461,8 +6537,17 @@ export default function App() {
                   <Sliders size={13} />
                 </button>
                 {isCallFilterOpen && (
-                  <div className="call-filter-panel" style={{ bottom: '36px', top: 'auto' }} onClick={e => e.stopPropagation()}>
-                    {[['none','Normal'],['sepia','Sepia'],['grayscale','B&W'],['cyberpunk','Cyber'],['vintage','Vintage'],['polaroid','Polar'],['gothic','Gothic'],['popart','Pop Art'],['neongold','Neon'],['dreamy','Dreamy'],['highsat','Vivid'],['retrocool','Retro'],['invert','Invert'],['duotoneteal','Teal']].map(([key,label]) => (
+                  <div className="call-filter-panel" style={{ bottom: '36px', top: 'auto', maxHeight: '180px', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                    {[
+                      ['none','Normal'],['sepia','Sepia'],['grayscale','B&W'],['invert','Invert'],
+                      ['cyberpunk','Cyberpunk'],['vintage','Vintage'],['polaroid','Polaroid'],['gothic','Gothic'],
+                      ['popart','Pop Art'],['neongold','Neon Gold'],['duotoneteal','Teal'],['dreamy','Dreamy'],
+                      ['highsat','Vivid'],['retrocool','Retro'],
+                      ['amaro','Amaro ✨'],['brooklyn','Brooklyn 🌿'],['earlybird','Earlybird 🌅'],
+                      ['hudson','Hudson ❄️'],['lomo','Lomo 📷'],['nashville','Nashville 🌸'],
+                      ['valencia','Valencia ☀️'],['sketch','Sketch ✏️'],['sunset','Sunset 🌇'],
+                      ['sakura','Sakura 🌺'],['beauty','Beauty 💄'],['cool','Cool Breeze 🌊'],['inkwell','Inkwell 🔲']
+                    ].map(([key,label]) => (
                       <button
                         key={key}
                         className={`call-filter-chip ${localVideoFilter === key ? 'active' : ''}`}
@@ -7154,36 +7239,139 @@ export default function App() {
       {/* 13. Webcam Capture Modal */}
       {isWebcamOpen && (
         <div className="bottom-sheet-backdrop" style={{ zIndex: 11000 }} onClick={stopWebcam}>
-          <div className="bottom-sheet-content animate-slide-up" style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+          <div className="bottom-sheet-content animate-slide-up" style={{ maxHeight: '95vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div className="bottom-sheet-header">
-              <span className="bottom-sheet-title">📸 Take a Photo</span>
+              <span className="bottom-sheet-title">📸 {capturedPhotoUrl ? 'Confirm Photo' : 'Take a Photo'}</span>
               <button className="bottom-sheet-close" onClick={stopWebcam}><X size={20} /></button>
             </div>
-            <div className="bottom-sheet-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', alignItems: 'center' }}>
-              {/* Live webcam preview */}
-              <div style={{ position: 'relative', width: '100%', maxWidth: '480px', background: '#000', borderRadius: '14px', overflow: 'hidden', aspectRatio: '4/3' }}>
-                <video
-                  ref={webcamVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
+            <div className="bottom-sheet-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', alignItems: 'center', overflowY: 'auto' }}>
+              
+              {/* Webcam Feed / Captured Photo Preview */}
+              <div style={{ position: 'relative', width: '100%', maxWidth: '440px', background: '#000', borderRadius: '14px', overflow: 'hidden', aspectRatio: '4/3' }}>
+                {capturedPhotoUrl ? (
+                  <img
+                    src={capturedPhotoUrl}
+                    alt="Captured preview"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                ) : (
+                  <video
+                    ref={webcamVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`filter-${selectedWebcamFilter}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'filter 0.2s ease' }}
+                  />
+                )}
                 {/* Shutter overlay ring */}
                 <div style={{ position: 'absolute', inset: 0, border: '3px solid rgba(255,255,255,0.15)', borderRadius: '14px', pointerEvents: 'none' }} />
               </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
-                Position yourself, then click Capture. The photo will open in the filter editor before sending.
-              </p>
-              <div style={{ display: 'flex', gap: '0.75rem', width: '100%', maxWidth: '480px' }}>
-                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={stopWebcam}>Cancel</button>
-                <button
-                  className="btn btn-primary"
-                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '1rem' }}
-                  onClick={captureWebcamPhoto}
-                >
-                  <Camera size={18} /> Capture
-                </button>
+
+              {!capturedPhotoUrl && (
+                <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Live Filters (27 options):</span>
+                  <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
+                    {[
+                      { name: 'Normal', key: 'none', filterClass: 'filter-normal' },
+                      { name: 'Sepia', key: 'sepia', filterClass: 'filter-sepia' },
+                      { name: 'Grayscale', key: 'grayscale', filterClass: 'filter-grayscale' },
+                      { name: 'Invert', key: 'invert', filterClass: 'filter-invert' },
+                      { name: 'Cyberpunk', key: 'cyberpunk', filterClass: 'filter-cyberpunk' },
+                      { name: 'Vintage', key: 'vintage', filterClass: 'filter-vintage' },
+                      { name: 'Polaroid', key: 'polaroid', filterClass: 'filter-polaroid' },
+                      { name: 'Gothic', key: 'gothic', filterClass: 'filter-gothic' },
+                      { name: 'Pop Art', key: 'popart', filterClass: 'filter-popart' },
+                      { name: 'Neon Gold', key: 'neongold', filterClass: 'filter-neongold' },
+                      { name: 'Duotone Teal', key: 'duotoneteal', filterClass: 'filter-duotoneteal' },
+                      { name: 'Dreamy', key: 'dreamy', filterClass: 'filter-dreamy' },
+                      { name: 'High Sat', key: 'highsat', filterClass: 'filter-highsat' },
+                      { name: 'Retro Cool', key: 'retrocool', filterClass: 'filter-retrocool' },
+                      { name: 'Amaro', key: 'amaro', filterClass: 'filter-amaro' },
+                      { name: 'Brooklyn', key: 'brooklyn', filterClass: 'filter-brooklyn' },
+                      { name: 'Earlybird', key: 'earlybird', filterClass: 'filter-earlybird' },
+                      { name: 'Hudson', key: 'hudson', filterClass: 'filter-hudson' },
+                      { name: 'Lomo', key: 'lomo', filterClass: 'filter-lomo' },
+                      { name: 'Nashville', key: 'nashville', filterClass: 'filter-nashville' },
+                      { name: 'Valencia', key: 'valencia', filterClass: 'filter-valencia' },
+                      { name: 'Sketch', key: 'sketch', filterClass: 'filter-sketch' },
+                      { name: 'Sunset', key: 'sunset', filterClass: 'filter-sunset' },
+                      { name: 'Sakura', key: 'sakura', filterClass: 'filter-sakura' },
+                      { name: 'Beauty', key: 'beauty', filterClass: 'filter-beauty' },
+                      { name: 'Cool', key: 'cool', filterClass: 'filter-cool' },
+                      { name: 'Inkwell', key: 'inkwell', filterClass: 'filter-inkwell' }
+                    ].map(f => (
+                      <div
+                        key={f.key}
+                        onClick={() => setSelectedWebcamFilter(f.key)}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '3px',
+                          cursor: 'pointer',
+                          flexShrink: 0
+                        }}
+                      >
+                        <div
+                          className={`filter-preview-thumb ${f.filterClass} ${selectedWebcamFilter === f.key ? 'active' : ''}`}
+                          style={{
+                            width: '45px',
+                            height: '45px',
+                            borderRadius: '6px',
+                            border: selectedWebcamFilter === f.key ? '2px solid #14b8a6' : '1px solid var(--border-color)',
+                            background: '#222',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.9rem'
+                          }}
+                        >
+                          📸
+                        </div>
+                        <span style={{ fontSize: '0.62rem', color: selectedWebcamFilter === f.key ? '#14b8a6' : 'var(--text-secondary)', fontWeight: 600 }}>
+                          {f.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '0.75rem', width: '100%', maxWidth: '440px', marginTop: '0.5rem' }}>
+                {capturedPhotoUrl ? (
+                  <>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ flex: 1 }}
+                      onClick={() => {
+                        setCapturedPhotoBlob(null);
+                        setCapturedPhotoUrl(null);
+                      }}
+                    >
+                      🔄 Retake
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.95rem' }}
+                      onClick={sendCapturedWebcamPhoto}
+                    >
+                      <Send size={16} /> Send Photo
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="btn btn-secondary" style={{ flex: 1 }} onClick={stopWebcam}>Cancel</button>
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.95rem' }}
+                      onClick={captureWebcamPhoto}
+                    >
+                      <Camera size={16} /> Capture
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
