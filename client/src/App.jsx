@@ -19,6 +19,56 @@ const getLevelTier = (level) => {
   return { name: 'Bronze', class: 'level-bronze' };
 };
 
+// Ludo Coordinate Helpers
+const ludoTrackCells = [
+  { r: 6, c: 0 }, { r: 6, c: 1 }, { r: 6, c: 2 }, { r: 6, c: 3 }, { r: 6, c: 4 }, { r: 6, c: 5 },
+  { r: 5, c: 6 }, { r: 4, c: 6 }, { r: 3, c: 6 }, { r: 2, c: 6 }, { r: 1, c: 6 }, { r: 0, c: 6 },
+  { r: 0, c: 7 },
+  { r: 0, c: 8 }, { r: 1, c: 8 }, { r: 2, c: 8 }, { r: 3, c: 8 }, { r: 4, c: 8 }, { r: 5, c: 8 },
+  { r: 6, c: 9 }, { r: 6, c: 10 }, { r: 6, c: 11 }, { r: 6, c: 12 }, { r: 6, c: 13 }, { r: 6, c: 14 },
+  { r: 7, c: 14 },
+  { r: 8, c: 14 }, { r: 8, c: 13 }, { r: 8, c: 12 }, { r: 8, c: 11 }, { r: 8, c: 10 }, { r: 8, c: 9 },
+  { r: 9, c: 8 }, { r: 10, c: 8 }, { r: 11, c: 8 }, { r: 12, c: 8 }, { r: 13, c: 8 }, { r: 14, c: 8 },
+  { r: 14, c: 7 },
+  { r: 14, c: 6 }, { r: 13, c: 6 }, { r: 12, c: 6 }, { r: 11, c: 6 }, { r: 10, c: 6 }, { r: 9, c: 6 },
+  { r: 8, c: 5 }, { r: 8, c: 4 }, { r: 8, c: 3 }, { r: 8, c: 2 }, { r: 8, c: 1 }, { r: 8, c: 0 },
+  { r: 7, c: 0 }
+];
+
+const getTokenCoords = (color, pos, idx) => {
+  if (pos === 0) {
+    if (color === 'R') return idx === 0 ? { r: 2, c: 2 } : idx === 1 ? { r: 2, c: 3 } : idx === 2 ? { r: 3, c: 2 } : { r: 3, c: 3 };
+    if (color === 'G') return idx === 0 ? { r: 2, c: 11 } : idx === 1 ? { r: 2, c: 12 } : idx === 2 ? { r: 3, c: 11 } : { r: 3, c: 12 };
+    if (color === 'Y') return idx === 0 ? { r: 11, c: 2 } : idx === 1 ? { r: 11, c: 3 } : idx === 2 ? { r: 12, c: 2 } : { r: 12, c: 3 };
+    if (color === 'B') return idx === 0 ? { r: 11, c: 11 } : idx === 1 ? { r: 11, c: 12 } : idx === 2 ? { r: 12, c: 11 } : { r: 12, c: 12 };
+  }
+  if (pos === 57) {
+    return { r: 7, c: 7 };
+  }
+  if (pos >= 52 && pos <= 56) {
+    const step = pos - 52;
+    if (color === 'R') return { r: 7, c: 1 + step };
+    if (color === 'G') return { r: 1 + step, c: 7 };
+    if (color === 'B') return { r: 7, c: 13 - step };
+    if (color === 'Y') return { r: 13 - step, c: 7 };
+  }
+  let offset = 0;
+  if (color === 'R') offset = 1;
+  if (color === 'G') offset = 14;
+  if (color === 'B') offset = 27;
+  if (color === 'Y') offset = 40;
+  const trackIdx = (offset + pos - 1) % 52;
+  return ludoTrackCells[trackIdx];
+};
+
+const isSafeCell = (r, c) => {
+  const safeCoords = [
+    { r: 6, c: 1 }, { r: 1, c: 8 }, { r: 8, c: 13 }, { r: 13, c: 6 },
+    { r: 8, c: 2 }, { r: 2, c: 6 }, { r: 6, c: 12 }, { r: 12, c: 8 }
+  ];
+  return safeCoords.some(coord => coord.r === r && coord.c === c);
+};
+
 export default function App() {
   // Authentication & Profile States
   const [token, setToken] = useState(localStorage.getItem('h70_token') || null);
@@ -179,6 +229,71 @@ export default function App() {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
+
+  const [callDuration, setCallDuration] = useState(0);
+  const callTimerRef = useRef(null);
+  const [roomCallDuration, setRoomCallDuration] = useState(0);
+  const roomCallTimerRef = useRef(null);
+
+  const iceCandidatesQueueRef = useRef([]);
+  const roomIceQueueRef = useRef({}); // socketId -> array of candidates
+
+  const localStreamRef = useRef(null);
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
+
+  const isInRoomCallRef = useRef(false);
+  useEffect(() => {
+    isInRoomCallRef.current = isInRoomCall;
+  }, [isInRoomCall]);
+
+  const roomCallParticipantsRef = useRef([]);
+  useEffect(() => {
+    roomCallParticipantsRef.current = roomCallParticipants;
+  }, [roomCallParticipants]);
+
+  // 1-on-1 Call duration timer
+  useEffect(() => {
+    if (callState && callState.status === 'connected') {
+      setCallDuration(0);
+      callTimerRef.current = setInterval(() => {
+        setCallDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+        callTimerRef.current = null;
+      }
+      setCallDuration(0);
+    }
+    return () => {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+      }
+    };
+  }, [callState]);
+
+  // Room Call duration timer
+  useEffect(() => {
+    if (isInRoomCall) {
+      setRoomCallDuration(0);
+      roomCallTimerRef.current = setInterval(() => {
+        setRoomCallDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (roomCallTimerRef.current) {
+        clearInterval(roomCallTimerRef.current);
+        roomCallTimerRef.current = null;
+      }
+      setRoomCallDuration(0);
+    }
+    return () => {
+      if (roomCallTimerRef.current) {
+        clearInterval(roomCallTimerRef.current);
+      }
+    };
+  }, [isInRoomCall]);
 
   const [unreadCounts, setUnreadCounts] = useState({});
   const [roomUnreadCounts, setRoomUnreadCounts] = useState({});
@@ -743,8 +858,15 @@ export default function App() {
       });
     });
 
-    // 1-on-1 Calling events
+    // 1-on-1 Calling & Room Calling signaling events
     socket.on('call-made', async ({ offer, from, fromNickname, type }) => {
+      // Check if we are in a room call, if so, treat this as a room call connection offer
+      if (currentChatRef.current && currentChatRef.current.type === 'room' && isInRoomCallRef.current) {
+        await acceptRoomCallOffer(from, offer);
+        return;
+      }
+
+      // Otherwise, standard 1-on-1 call modal setup
       setCallState({
         status: 'incoming',
         from,
@@ -754,19 +876,81 @@ export default function App() {
       });
     });
 
-    socket.on('answer-made', async ({ answer }) => {
+    socket.on('answer-made', async ({ answer, socket: fromSocketId }) => {
+      // If we are in a room call, find the matching peer connection and set remote desc
+      if (isInRoomCallRef.current && fromSocketId) {
+        const pc = roomCallPCsRef.current[fromSocketId];
+        if (pc) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            const queuedCands = roomIceQueueRef.current[fromSocketId] || [];
+            while (queuedCands.length > 0) {
+              const cand = queuedCands.shift();
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              } catch (e) {
+                console.error('Error adding room queued ICE candidate:', e);
+              }
+            }
+          } catch (err) {
+            console.error('Error setting remote description for room peer answer:', err);
+          }
+        }
+        return;
+      }
+
       if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        setCallState(prev => ({ ...prev, status: 'connected' }));
+        try {
+          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+          setCallState(prev => ({ ...prev, status: 'connected' }));
+          
+          // Flush the ICE candidate queue
+          while (iceCandidatesQueueRef.current.length > 0) {
+            const cand = iceCandidatesQueueRef.current.shift();
+            try {
+              await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (e) {
+              console.error('Error adding queued ICE candidate:', e);
+            }
+          }
+        } catch (err) {
+          console.error('Error setting remote description for answer:', err);
+        }
       }
     });
 
-    socket.on('ice-candidate', async ({ candidate }) => {
+    socket.on('ice-candidate', async ({ candidate, from }) => {
+      // If we are in a room call, route the candidate to the correct mesh peer PC
+      if (isInRoomCallRef.current && from) {
+        const peer = roomCallParticipantsRef.current.find(p => p.userId === from);
+        if (peer && roomCallPCsRef.current[peer.socketId]) {
+          const pc = roomCallPCsRef.current[peer.socketId];
+          if (pc.remoteDescription) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+              console.error('Error adding received room ICE candidate:', e);
+            }
+          } else {
+            if (!roomIceQueueRef.current[peer.socketId]) {
+              roomIceQueueRef.current[peer.socketId] = [];
+            }
+            roomIceQueueRef.current[peer.socketId].push(candidate);
+          }
+          return;
+        }
+      }
+
+      // 1-on-1 Call candidate routing
       if (peerConnectionRef.current) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-          console.error('Error adding received ice candidate', e);
+        if (peerConnectionRef.current.remoteDescription) {
+          try {
+            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.error('Error adding received ICE candidate:', e);
+          }
+        } else {
+          iceCandidatesQueueRef.current.push(candidate);
         }
       }
     });
@@ -2044,6 +2228,8 @@ export default function App() {
     setCallState(null);
     setIsMicMuted(false);
     setIsCameraOff(false);
+    iceCandidatesQueueRef.current = [];
+    roomIceQueueRef.current = {};
   };
 
   // Toggle controls during active 1-on-1 calls
@@ -2130,6 +2316,7 @@ export default function App() {
     Object.values(roomCallPCsRef.current).forEach(pc => pc.close());
     roomCallPCsRef.current = {};
     roomCallStreamsRef.current = {};
+    roomIceQueueRef.current = {};
     
     setLocalStream(null);
     setRoomCallParticipants([]);
@@ -2138,7 +2325,13 @@ export default function App() {
 
   const initiateRoomPeerConnection = async (targetSocketId, nickname, userId, isInitiator) => {
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ]
     });
 
     roomCallPCsRef.current[targetSocketId] = pc;
@@ -2189,13 +2382,72 @@ export default function App() {
     });
   };
 
+  const acceptRoomCallOffer = async (fromUserId, offer) => {
+    const peer = roomCallParticipantsRef.current.find(p => p.userId === fromUserId);
+    if (!peer) {
+      console.warn('Received room call offer from unknown participant:', fromUserId);
+      return;
+    }
+
+    let pc = roomCallPCsRef.current[peer.socketId];
+    if (!pc) {
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' }
+        ]
+      });
+      roomCallPCsRef.current[peer.socketId] = pc;
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
+      }
+
+      pc.ontrack = (event) => {
+        const incomingStream = event.streams[0];
+        roomCallStreamsRef.current[peer.socketId] = incomingStream;
+        setRoomCallParticipants(prev => prev.map(p => p.socketId === peer.socketId ? { ...p, stream: incomingStream } : p));
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socketRef.current?.emit('ice-candidate', {
+            to: peer.userId,
+            candidate: event.candidate
+          });
+        }
+      };
+    }
+
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+    // Process queued room ICE candidates
+    const queuedCands = roomIceQueueRef.current[peer.socketId] || [];
+    while (queuedCands.length > 0) {
+      const cand = queuedCands.shift();
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (e) {
+        console.error('Error adding queued room ICE candidate', e);
+      }
+    }
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    socketRef.current?.emit('make-answer', {
+      to: peer.userId,
+      answer
+    });
+  };
+
   // Helper translations
   const activeUsersIdBySocketId = (socketId) => {
-    for (const u of onlineUsers) {
-      // Find matching user
-      // Note: mapping handled simple for sandbox
-    }
-    return '';
+    const p = roomCallParticipantsRef.current.find(p => p.socketId === socketId);
+    return p ? p.userId : '';
   };
 
 
@@ -3242,9 +3494,273 @@ export default function App() {
               <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 0 }}>
                 {(() => {
                   if (selectedGame.id === 'ludo') {
-                    // LUDO GAME CONTAINER
+                    // LUDO GAME CONTAINER - Fully Featured 15x15 Graphical Board
+                    const handleMoveToken = (color, idx) => {
+                      const pos = ludoTokens[color][idx];
+                      const nextPos = pos === 0 ? 1 : pos + (ludoDiceVal || 0);
+                      const newTokens = { ...ludoTokens };
+                      newTokens[color] = [...newTokens[color]];
+                      newTokens[color][idx] = nextPos;
+                      
+                      // Check win condition
+                      let win = null;
+                      if (newTokens[color].every(p => p === 57)) {
+                        win = color;
+                        setLudoWinner(color);
+                        setLudoStatus('finished');
+                      }
+
+                      setLudoTokens(newTokens);
+                      setLudoDiceVal(null);
+                      setLudoHasRolled(false);
+                      
+                      // Toggle turn if not a 6
+                      const order = ['R', 'G', 'Y', 'B'];
+                      const nextTurn = ludoDiceVal === 6 ? color : order[(order.indexOf(color) + 1) % 4];
+                      setLudoTurn(nextTurn);
+
+                      if (currentChat?.type === 'dm') {
+                        socketRef.current?.emit('game-action-sync', {
+                          gameId: 'ludo',
+                          recipientId: currentChat.id,
+                          gameState: { tokens: newTokens, turn: nextTurn, winner: win, status: win ? 'finished' : 'active', diceVal: null, hasRolled: false }
+                        });
+                      }
+                    };
+
+                    const getTokensOnCell = (r, c) => {
+                      const found = [];
+                      ['R', 'G', 'Y', 'B'].forEach(color => {
+                        (ludoTokens?.[color] || [0,0,0,0]).forEach((pos, idx) => {
+                          const coords = getTokenCoords(color, pos, idx);
+                          if (coords && coords.r === r && coords.c === c) {
+                            found.push({ color, idx, pos });
+                          }
+                        });
+                      });
+                      return found;
+                    };
+
+                    const renderYardBases = (color) => {
+                      const bgColor = color === 'R' ? '#ef4444' : color === 'G' ? '#10b981' : color === 'Y' ? '#f59e0b' : '#3b82f6';
+                      const tokens = ludoTokens?.[color] || [0,0,0,0];
+                      
+                      return (
+                        <div style={{
+                          width: '80%',
+                          height: '80%',
+                          background: '#ffffff',
+                          borderRadius: '12px',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gridTemplateRows: 'repeat(2, 1fr)',
+                          padding: '10px',
+                          gap: '10px',
+                          boxShadow: 'inset 0 0 10px rgba(0,0,0,0.1)'
+                        }}>
+                          {tokens.map((pos, idx) => {
+                            const isInYard = pos === 0;
+                            const canMove = ludoTurn === color && ludoHasRolled && ludoDiceVal === 6;
+                            
+                            return (
+                              <div key={idx} style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                borderRadius: '50%',
+                                border: isInYard ? 'none' : '2px dashed #cbd5e1',
+                                background: isInYard ? 'rgba(0,0,0,0.03)' : 'transparent',
+                                position: 'relative',
+                                width: '100%',
+                                height: '100%'
+                              }}>
+                                {isInYard && (
+                                  <button
+                                    disabled={!canMove}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveToken(color, idx);
+                                    }}
+                                    style={{
+                                      width: '90%',
+                                      height: '90%',
+                                      borderRadius: '50%',
+                                      background: bgColor,
+                                      border: '2px solid #ffffff',
+                                      display: 'flex',
+                                      justifyContent: 'center',
+                                      alignItems: 'center',
+                                      color: '#ffffff',
+                                      fontSize: '11px',
+                                      fontWeight: 800,
+                                      cursor: canMove ? 'pointer' : 'default',
+                                      boxShadow: canMove ? '0 0 10px 3px rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)',
+                                      animation: canMove ? 'pulse 1.2s infinite' : 'none',
+                                      transition: 'all 0.15s ease',
+                                      padding: 0
+                                    }}
+                                    title={`Move Token ${idx + 1} out of base`}
+                                  >
+                                    {idx + 1}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    };
+
+                    const cellsToRender = [];
+
+                    // 1. Yards
+                    cellsToRender.push(
+                      <div key="yard-R" style={{ gridRow: "1 / 7", gridColumn: "1 / 7", background: '#ef4444', border: '2px solid #991b1b', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                        {renderYardBases('R')}
+                        <span style={{ position: 'absolute', top: '4px', left: '8px', fontSize: '0.65rem', fontWeight: 900, color: '#fee2e2' }}>RED BASE</span>
+                      </div>
+                    );
+                    cellsToRender.push(
+                      <div key="yard-G" style={{ gridRow: "1 / 7", gridColumn: "10 / 16", background: '#10b981', border: '2px solid #065f46', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                        {renderYardBases('G')}
+                        <span style={{ position: 'absolute', top: '4px', right: '8px', fontSize: '0.65rem', fontWeight: 900, color: '#d1fae5' }}>GREEN BASE</span>
+                      </div>
+                    );
+                    cellsToRender.push(
+                      <div key="yard-Y" style={{ gridRow: "10 / 16", gridColumn: "1 / 7", background: '#f59e0b', border: '2px solid #92400e', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                        {renderYardBases('Y')}
+                        <span style={{ position: 'absolute', bottom: '4px', left: '8px', fontSize: '0.65rem', fontWeight: 900, color: '#fef3c7' }}>YELLOW BASE</span>
+                      </div>
+                    );
+                    cellsToRender.push(
+                      <div key="yard-B" style={{ gridRow: "10 / 16", gridColumn: "10 / 16", background: '#3b82f6', border: '2px solid #1e40af', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+                        {renderYardBases('B')}
+                        <span style={{ position: 'absolute', bottom: '4px', right: '8px', fontSize: '0.65rem', fontWeight: 900, color: '#dbeafe' }}>BLUE BASE</span>
+                      </div>
+                    );
+
+                    // 2. Goal (Center)
+                    cellsToRender.push(
+                      <div key="goal" style={{ gridRow: "7 / 10", gridColumn: "7 / 10", background: '#f1f5f9', border: '2px solid #475569', borderRadius: '4px', position: 'relative', overflow: 'hidden' }}>
+                        <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', display: 'block' }}>
+                          <polygon points="0,0 50,50 0,100" fill="#ef4444" opacity="0.9" />
+                          <polygon points="0,0 100,0 50,50" fill="#10b981" opacity="0.9" />
+                          <polygon points="100,0 100,100 50,50" fill="#3b82f6" opacity="0.9" />
+                          <polygon points="0,100 100,100 50,50" fill="#f59e0b" opacity="0.9" />
+                        </svg>
+                        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', pointerEvents: 'none', padding: '10px' }}>
+                          {getTokensOnCell(7, 7).map((t, idx) => (
+                            <div key={idx} style={{ width: '12px', height: '12px', borderRadius: '50%', background: t.color === 'R' ? '#ef4444' : t.color === 'G' ? '#10b981' : t.color === 'Y' ? '#f59e0b' : '#3b82f6', border: '1.5px solid #fff', margin: '1px' }} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+
+                    // 3. Track Cells Builder
+                    const renderTrackCell = (r, c) => {
+                      const tokens = getTokensOnCell(r, c);
+                      const isSafe = isSafeCell(r, c);
+                      
+                      let cellBg = '#ffffff';
+                      let cellBorder = '1px solid #cbd5e1';
+                      
+                      if (r === 6 && c === 1) cellBg = '#fecaca'; // Red Start
+                      else if (r === 1 && c === 8) cellBg = '#a7f3d0'; // Green Start
+                      else if (r === 8 && c === 13) cellBg = '#bfdbfe'; // Blue Start
+                      else if (r === 13 && c === 6) cellBg = '#fde68a'; // Yellow Start
+                      
+                      else if (r === 7 && c >= 1 && c <= 5) cellBg = '#fee2e2'; // Red stretch
+                      else if (r >= 1 && r <= 5 && c === 7) cellBg = '#d1fae5'; // Green stretch
+                      else if (r === 7 && c >= 9 && c <= 13) cellBg = '#dbeafe'; // Blue stretch
+                      else if (r >= 9 && r <= 13 && c === 7) cellBg = '#fef3c7'; // Yellow stretch
+                      
+                      else if (r === 8 && c === 2) cellBg = '#fee2e2'; // Red safe
+                      else if (r === 2 && c === 6) cellBg = '#d1fae5'; // Green safe
+                      else if (r === 6 && c === 12) cellBg = '#dbeafe'; // Blue safe
+                      else if (r === 12 && c === 8) cellBg = '#fef3c7'; // Yellow safe
+
+                      return (
+                        <div
+                          key={`cell-${r}-${c}`}
+                          style={{
+                            gridRow: `${r + 1}`,
+                            gridColumn: `${c + 1}`,
+                            background: cellBg,
+                            border: cellBorder,
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            position: 'relative'
+                          }}
+                        >
+                          {isSafe && tokens.length === 0 && (
+                            <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>⭐</span>
+                          )}
+                          
+                          {tokens.length > 0 && (
+                            <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', padding: '2px' }}>
+                              {tokens.map((token, index) => {
+                                const canMove = ludoTurn === token.color && ludoHasRolled && token.pos + (ludoDiceVal || 0) <= 57;
+                                return (
+                                  <button
+                                    key={index}
+                                    disabled={!canMove}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveToken(token.color, token.idx);
+                                    }}
+                                    style={{
+                                      width: tokens.length > 1 ? '13px' : '22px',
+                                      height: tokens.length > 1 ? '13px' : '22px',
+                                      borderRadius: '50%',
+                                      background: token.color === 'R' ? '#ef4444' : token.color === 'G' ? '#10b981' : token.color === 'Y' ? '#f59e0b' : '#3b82f6',
+                                      color: '#ffffff',
+                                      border: '1.5px solid #ffffff',
+                                      display: 'flex',
+                                      justifyContent: 'center',
+                                      alignItems: 'center',
+                                      fontSize: tokens.length > 1 ? '7px' : '9px',
+                                      fontWeight: 900,
+                                      cursor: canMove ? 'pointer' : 'default',
+                                      boxShadow: canMove ? '0 0 8px 3px rgba(255,255,255,0.9), 0 2px 4px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.2)',
+                                      animation: canMove ? 'pulse 1.2s infinite' : 'none',
+                                      transition: 'all 0.15s ease',
+                                      padding: 0
+                                    }}
+                                    title={`${token.color === 'R' ? 'Red' : token.color === 'G' ? 'Green' : token.color === 'Y' ? 'Yellow' : 'Blue'} Token ${token.idx + 1}`}
+                                  >
+                                    {token.color}{token.idx + 1}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    for (let r = 0; r <= 5; r++) {
+                      for (let c = 6; c <= 8; c++) cellsToRender.push(renderTrackCell(r, c));
+                    }
+                    for (let r = 6; r <= 8; r++) {
+                      for (let c = 0; c <= 5; c++) cellsToRender.push(renderTrackCell(r, c));
+                    }
+                    for (let r = 6; r <= 8; r++) {
+                      for (let c = 9; c <= 14; c++) cellsToRender.push(renderTrackCell(r, c));
+                    }
+                    for (let r = 9; r <= 14; r++) {
+                      for (let c = 6; c <= 8; c++) cellsToRender.push(renderTrackCell(r, c));
+                    }
+
                     return (
-                      <div style={{ width: '100%', maxWidth: '600px', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+                      <div style={{ width: '100%', maxWidth: '900px', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+                        <style>{`
+                          @keyframes pulse {
+                            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.9); }
+                            70% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(255, 255, 255, 0); }
+                            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+                          }
+                        `}</style>
                         <div style={{ display: 'flex', gap: '1rem', width: '100%', justifyContent: 'center', marginBottom: '0.5rem' }}>
                           <button className="btn btn-secondary" onClick={() => {
                             setLudoTokens({
@@ -3279,116 +3795,108 @@ export default function App() {
                             </p>
                           </div>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%' }}>
-                            {/* Dice & Turn Bar */}
-                            <div style={{ display: 'flex', justifycontent: 'space-between', width: '100%', background: 'var(--bg-secondary)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: ludoTurn === 'R' ? '#ef4444' : ludoTurn === 'G' ? '#10b981' : ludoTurn === 'Y' ? '#f59e0b' : '#3b82f6', display: 'inline-block' }}></span>
-                                <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                                  Turn: {ludoTurn === 'R' ? 'Red' : ludoTurn === 'G' ? 'Green' : ludoTurn === 'Y' ? 'Yellow' : 'Blue'}
-                                </span>
+                          <div style={{ display: 'flex', flexDirection: 'row', gap: '2rem', width: '100%', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start' }}>
+                            {/* Left: 15x15 Ludo Board Grid */}
+                            <div style={{ flex: '1 1 400px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(15, 1fr)',
+                                gridTemplateRows: 'repeat(15, 1fr)',
+                                width: '100%',
+                                aspectRatio: '1 / 1',
+                                maxWidth: '420px',
+                                background: '#f8fafc',
+                                border: '4px solid #475569',
+                                borderRadius: '12px',
+                                padding: '4px',
+                                gap: '1px',
+                                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)'
+                              }}>
+                                {cellsToRender}
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <button className="btn btn-primary" disabled={ludoHasRolled} onClick={() => {
-                                  const roll = Math.floor(Math.random() * 6) + 1;
-                                  setLudoDiceVal(roll);
-                                  setLudoHasRolled(true);
-                                  // Broadcast roll if multiplayer
+                            </div>
+
+                            {/* Right: Controls & Details */}
+                            <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+                              {/* Dice & Turn Bar */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', background: 'var(--bg-secondary)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: ludoTurn === 'R' ? '#ef4444' : ludoTurn === 'G' ? '#10b981' : ludoTurn === 'Y' ? '#f59e0b' : '#3b82f6', display: 'inline-block' }}></span>
+                                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                                    Turn: {ludoTurn === 'R' ? 'Red' : ludoTurn === 'G' ? 'Green' : ludoTurn === 'Y' ? 'Yellow' : 'Blue'}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <button className="btn btn-primary" disabled={ludoHasRolled} onClick={() => {
+                                    const roll = Math.floor(Math.random() * 6) + 1;
+                                    setLudoDiceVal(roll);
+                                    setLudoHasRolled(true);
+                                    if (currentChat?.type === 'dm') {
+                                      socketRef.current?.emit('game-action-sync', {
+                                        gameId: 'ludo',
+                                        recipientId: currentChat.id,
+                                        gameState: { diceVal: roll, turn: ludoTurn, tokens: ludoTokens, status: ludoStatus, hasRolled: true }
+                                      });
+                                    }
+                                  }} style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                                    Roll Dice
+                                  </button>
+                                  {ludoDiceVal && <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>🎲 {ludoDiceVal}</span>}
+                                </div>
+                              </div>
+
+                              {/* Pass Turn Button */}
+                              {ludoHasRolled && (
+                                <button className="btn btn-secondary" onClick={() => {
+                                  setLudoDiceVal(null);
+                                  setLudoHasRolled(false);
+                                  const order = ['R', 'G', 'Y', 'B'];
+                                  const nextTurn = order[(order.indexOf(ludoTurn) + 1) % 4];
+                                  setLudoTurn(nextTurn);
                                   if (currentChat?.type === 'dm') {
                                     socketRef.current?.emit('game-action-sync', {
                                       gameId: 'ludo',
                                       recipientId: currentChat.id,
-                                      gameState: { diceVal: roll, turn: ludoTurn, tokens: ludoTokens, status: ludoStatus, hasRolled: true }
+                                      gameState: { turn: nextTurn, tokens: ludoTokens, status: ludoStatus, diceVal: null, hasRolled: false }
                                     });
                                   }
-                                }} style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
-                                  Roll Dice
+                                }} style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', alignSelf: 'center' }}>
+                                  Pass turn ⏳
                                 </button>
-                                {ludoDiceVal && <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>🎲 {ludoDiceVal}</span>}
-                              </div>
-                            </div>
+                              )}
 
-                            {/* Ludo Tokens Grid Panel (Simplified board representation for rich aesthetics and clean play) */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', width: '100%' }}>
-                              {['R', 'G', 'Y', 'B'].map((color) => (
-                                <div key={color} style={{ background: color === 'R' ? 'rgba(239,68,68,0.1)' : color === 'G' ? 'rgba(16,185,129,0.1)' : color === 'Y' ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)', border: `2px solid ${color === 'R' ? '#ef4444' : color === 'G' ? '#10b981' : color === 'Y' ? '#f59e0b' : '#3b82f6'}`, borderRadius: '12px', padding: '1rem' }}>
-                                  <h4 style={{ margin: 0, textTransform: 'capitalize', color: color === 'R' ? '#ef4444' : color === 'G' ? '#10b981' : color === 'Y' ? '#f59e0b' : '#3b82f6', marginBottom: '0.5rem' }}>
-                                    {color === 'R' ? 'Red Team' : color === 'G' ? 'Green Team' : color === 'Y' ? 'Yellow Team' : 'Blue Team'}
-                                  </h4>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    {(ludoTokens?.[color] || [0,0,0,0]).map((pos, idx) => {
-                                      const canMove = ludoTurn === color && ludoHasRolled && (ludoDiceVal === 6 || pos > 0) && pos + (ludoDiceVal || 0) <= 57;
-                                      return (
-                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-secondary)', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
-                                          <span>Token {idx + 1}: <strong>{pos === 0 ? 'Home Base' : pos === 57 ? '🚩 Goal Reached' : `Step ${pos}`}</strong></span>
-                                          {canMove && (
-                                            <button className="btn btn-secondary" onClick={() => {
-                                              const nextPos = pos === 0 ? 1 : pos + (ludoDiceVal || 0);
-                                              const newTokens = { ...ludoTokens };
-                                              newTokens[color] = [...newTokens[color]];
-                                              newTokens[color][idx] = nextPos;
-                                              
-                                              // Check win condition
-                                              let win = null;
-                                              if (newTokens[color].every(p => p === 57)) {
-                                                win = color;
-                                                setLudoWinner(color);
-                                                setLudoStatus('finished');
-                                              }
-
-                                              setLudoTokens(newTokens);
-                                              setLudoDiceVal(null);
-                                              setLudoHasRolled(false);
-                                              
-                                              // Toggle turn if not a 6
-                                              const order = ['R', 'G', 'Y', 'B'];
-                                              const nextTurn = ludoDiceVal === 6 ? color : order[(order.indexOf(color) + 1) % 4];
-                                              setLudoTurn(nextTurn);
-
-                                              if (currentChat?.type === 'dm') {
-                                                socketRef.current?.emit('game-action-sync', {
-                                                  gameId: 'ludo',
-                                                  recipientId: currentChat.id,
-                                                  gameState: { tokens: newTokens, turn: nextTurn, winner: win, status: win ? 'finished' : 'active', diceVal: null, hasRolled: false }
-                                                });
-                                              }
-                                            }} style={{ padding: '2px 8px', fontSize: '0.7rem' }}>
-                                              Move (+{ludoDiceVal})
-                                            </button>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
+                              {/* Token Details Panel */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {['R', 'G', 'Y', 'B'].map((color) => (
+                                  <div key={color} style={{ background: color === 'R' ? 'rgba(239,68,68,0.03)' : color === 'G' ? 'rgba(16,185,129,0.03)' : color === 'Y' ? 'rgba(245,158,11,0.03)' : 'rgba(59,130,246,0.03)', border: `1px solid ${color === 'R' ? 'rgba(239,68,68,0.2)' : color === 'G' ? 'rgba(16,185,129,0.2)' : color === 'Y' ? 'rgba(245,158,11,0.2)' : 'rgba(59,130,246,0.2)'}`, borderRadius: '8px', padding: '0.6rem' }}>
+                                    <h5 style={{ margin: 0, textTransform: 'capitalize', color: color === 'R' ? '#ef4444' : color === 'G' ? '#10b981' : color === 'Y' ? '#f59e0b' : '#3b82f6', marginBottom: '0.25rem', fontSize: '0.75rem', fontWeight: 700 }}>
+                                      {color === 'R' ? 'Red' : color === 'G' ? 'Green' : color === 'Y' ? 'Yellow' : 'Blue'} Team
+                                    </h5>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                      {(ludoTokens?.[color] || [0,0,0,0]).map((pos, idx) => {
+                                        const canMove = ludoTurn === color && ludoHasRolled && (ludoDiceVal === 6 || pos > 0) && pos + (ludoDiceVal || 0) <= 57;
+                                        return (
+                                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-secondary)', padding: '0.2rem 0.35rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.7rem' }}>
+                                            <span>T{idx + 1}: <strong>{pos === 0 ? 'Yard' : pos === 57 ? 'Goal' : `Step ${pos}`}</strong></span>
+                                            {canMove && (
+                                              <button className="btn btn-secondary" onClick={() => handleMoveToken(color, idx)} style={{ padding: '1px 5px', fontSize: '0.6rem' }}>
+                                                Move (+{ludoDiceVal})
+                                              </button>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-
-                            {/* Dice Skip Trigger (in case player has no legal moves) */}
-                            {ludoHasRolled && (
-                              <button className="btn btn-secondary" onClick={() => {
-                                setLudoDiceVal(null);
-                                setLudoHasRolled(false);
-                                const order = ['R', 'G', 'Y', 'B'];
-                                const nextTurn = order[(order.indexOf(ludoTurn) + 1) % 4];
-                                setLudoTurn(nextTurn);
-                                if (currentChat?.type === 'dm') {
-                                  socketRef.current?.emit('game-action-sync', {
-                                    gameId: 'ludo',
-                                    recipientId: currentChat.id,
-                                    gameState: { turn: nextTurn, tokens: ludoTokens, status: ludoStatus, diceVal: null, hasRolled: false }
-                                  });
-                                }
-                              }} style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }}>
-                                No moves? Pass turn ⏳
-                              </button>
-                            )}
-
-                            {ludoWinner && (
-                              <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.1)', color: '#10b981', borderRadius: '10px', textAlign: 'center', width: '100%', fontWeight: 700 }}>
-                                🎉 Team {ludoWinner === 'R' ? 'Red' : ludoWinner === 'G' ? 'Green' : ludoWinner === 'Y' ? 'Yellow' : 'Blue'} wins the match!
+                                ))}
                               </div>
-                            )}
+
+                              {ludoWinner && (
+                                <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.1)', color: '#10b981', borderRadius: '10px', textAlign: 'center', width: '100%', fontWeight: 700 }}>
+                                  🎉 Team {ludoWinner === 'R' ? 'Red' : ludoWinner === 'G' ? 'Green' : ludoWinner === 'Y' ? 'Yellow' : 'Blue'} wins the match!
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -4179,7 +4687,10 @@ export default function App() {
               {currentChat.type === 'room' && isInRoomCall && (
                 <div className="room-call-banner">
                   <div className="room-call-header">
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Active Voice/Video Mesh Call</span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                      Active Voice/Video Mesh Call ({formatTime(roomCallDuration)})
+                    </span>
                     <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={toggleRoomCall}>
                       Leave Call
                     </button>
@@ -4189,7 +4700,17 @@ export default function App() {
                     <div className="room-call-user-card">
                       <div className={`room-call-video-box voice-active-ring-container ${speakingParticipants['local'] ? 'active-speaking' : ''}`} style={{ position: 'relative' }}>
                         {speakingParticipants['local'] && <div className="voice-active-ring" />}
-                        <video ref={localVideoRef} autoPlay muted playsInline className={`filter-${localVideoFilter}`} style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} />
+                        <video 
+                          ref={el => {
+                            localVideoRef.current = el;
+                            if (el) el.srcObject = localStream;
+                          }} 
+                          autoPlay 
+                          muted 
+                          playsInline 
+                          className={`filter-${localVideoFilter}`} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} 
+                        />
                         <div className="room-call-label">You</div>
                         {/* Filter toggle button on local video */}
                         <button
@@ -5889,7 +6410,22 @@ export default function App() {
             // Video Call Feed Panel
             <div className="video-feeds-grid">
               {callState.status === 'connected' && remoteStream ? (
-                <video ref={remoteVideoRef} className={`remote-video filter-${remoteVideoFilter}`} autoPlay playsInline />
+                <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                  <video 
+                    ref={el => {
+                      remoteVideoRef.current = el;
+                      if (el) el.srcObject = remoteStream;
+                    }} 
+                    className={`remote-video filter-${remoteVideoFilter}`} 
+                    autoPlay 
+                    playsInline 
+                  />
+                  {/* Connected Duration overlay on video */}
+                  <div className="call-duration-badge" style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.65)', padding: '4px 10px', borderRadius: '14px', fontSize: '0.75rem', color: '#fff', zIndex: 100, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                    {formatTime(callDuration)}
+                  </div>
+                </div>
               ) : (
                 <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-secondary)' }}>
                   <div className="calling-avatar-ring" style={{ width: '40px', height: '40px', position: 'static' }}></div>
@@ -5898,7 +6434,24 @@ export default function App() {
               )}
               {/* Local self video preview with filter */}
               <div style={{ position: 'relative' }}>
-                <video ref={localVideoRef} className={`local-video-preview filter-${localVideoFilter}`} autoPlay muted playsInline />
+                <video 
+                  ref={el => {
+                    localVideoRef.current = el;
+                    if (el) el.srcObject = localStream;
+                  }} 
+                  className={`local-video-preview filter-${localVideoFilter}`} 
+                  autoPlay 
+                  muted 
+                  playsInline 
+                />
+                
+                {/* Mute indicator overlay */}
+                {isMicMuted && (
+                  <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(239,68,68,0.85)', padding: '3px 8px', borderRadius: '6px', fontSize: '0.65rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 10, fontWeight: 600 }}>
+                    <MicOff size={10} /> Muted
+                  </div>
+                )}
+
                 {/* Filter toggle for DM video call */}
                 <button
                   onClick={() => setIsCallFilterOpen(p => !p)}
@@ -5928,12 +6481,42 @@ export default function App() {
                 {callState.status === 'ringing' && <div className="calling-avatar-ring"></div>}
               </div>
               <div style={{ fontWeight: 600 }}>{callState.nickname}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                {callState.status === 'connected' ? 'Connected (Voice Call)' : 'Calling...'}
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {callState.status === 'connected' ? (
+                  <>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                    <span>Connected ({formatTime(callDuration)})</span>
+                  </>
+                ) : (
+                  'Calling...'
+                )}
               </div>
-              {/* Hidden audio components */}
-              <audio ref={localVideoRef} autoPlay muted style={{ display: 'none' }} />
-              <audio ref={remoteVideoRef} autoPlay style={{ display: 'none' }} />
+              
+              {/* Mute warning status */}
+              {isMicMuted && (
+                <div style={{ fontSize: '0.7rem', color: 'var(--danger)', marginTop: '0.4rem', fontWeight: 600 }}>
+                  🎙️ Your Microphone is Muted
+                </div>
+              )}
+
+              {/* Hidden audio components utilizing callback refs */}
+              <audio 
+                ref={el => {
+                  localVideoRef.current = el;
+                  if (el) el.srcObject = localStream;
+                }} 
+                autoPlay 
+                muted 
+                style={{ display: 'none' }} 
+              />
+              <audio 
+                ref={el => {
+                  remoteVideoRef.current = el;
+                  if (el) el.srcObject = remoteStream;
+                }} 
+                autoPlay 
+                style={{ display: 'none' }} 
+              />
             </div>
           )}
 
