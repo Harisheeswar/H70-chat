@@ -203,10 +203,19 @@ export default function App() {
   // Webcam Capture States
   const [isWebcamOpen, setIsWebcamOpen] = useState(false);
   const [selectedWebcamFilter, setSelectedWebcamFilter] = useState('none');
+  const [selectedWebcamARFilter, setSelectedWebcamARFilter] = useState('none');
   const [capturedPhotoBlob, setCapturedPhotoBlob] = useState(null);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState(null);
   const webcamVideoRef = useRef(null);
+  const webcamCanvasRef = useRef(null);
+  const webcamTrackerRef = useRef(null);
+  const webcamAnimIdRef = useRef(null);
   const webcamStreamRef = useRef(null);
+
+  const selectedWebcamARFilterRef = useRef(selectedWebcamARFilter);
+  useEffect(() => {
+    selectedWebcamARFilterRef.current = selectedWebcamARFilter;
+  }, [selectedWebcamARFilter]);
 
   // Video Call Filter States
   const [localVideoFilter, setLocalVideoFilter] = useState('none');
@@ -1800,22 +1809,274 @@ export default function App() {
     e.target.value = '';
   };
 
+  // AR Filter Face Overlay Painter
+  const drawAROverlay = (ctx, positions, filterType) => {
+    if (!positions || positions.length < 50) return;
+
+    // Eyepositions
+    const le = { x: positions[27][0], y: positions[27][1] };
+    const re = { x: positions[32][0], y: positions[32][1] };
+    
+    // Calculations for position, scale and angle
+    const center = { x: (le.x + re.x) / 2, y: (le.y + re.y) / 2 };
+    const dx = re.x - le.x;
+    const dy = re.y - le.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+
+    ctx.save();
+    // Translate and rotate relative to eyes center
+    ctx.translate(center.x, center.y);
+    ctx.rotate(angle);
+
+    if (filterType === 'dog') {
+      // Floppy Brown Dog Ears
+      // Left ear
+      ctx.save();
+      ctx.translate(-dist * 0.65, -dist * 0.95);
+      ctx.rotate(-15 * Math.PI / 180);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, dist * 0.24, dist * 0.48, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, dist * 0.14, dist * 0.32, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffc0cb';
+      ctx.fill();
+      ctx.restore();
+
+      // Right ear
+      ctx.save();
+      ctx.translate(dist * 0.65, -dist * 0.95);
+      ctx.rotate(15 * Math.PI / 180);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, dist * 0.24, dist * 0.48, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, dist * 0.14, dist * 0.32, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffc0cb';
+      ctx.fill();
+      ctx.restore();
+
+      // Nose Tip (at positions[33])
+      const ntX = positions[33][0] - center.x;
+      const ntY = positions[33][1] - center.y;
+      const cosA = Math.cos(-angle);
+      const sinA = Math.sin(-angle);
+      const rotatedNtX = ntX * cosA - ntY * sinA;
+      const rotatedNtY = ntX * sinA + ntY * cosA;
+
+      ctx.save();
+      ctx.translate(rotatedNtX, rotatedNtY);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, dist * 0.18, dist * 0.13, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#222';
+      ctx.fill();
+      // shine
+      ctx.beginPath();
+      ctx.arc(-dist * 0.05, -dist * 0.03, dist * 0.04, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.restore();
+    } 
+    else if (filterType === 'cat') {
+      // Pointy Kitty Ears
+      // Left ear
+      ctx.save();
+      ctx.translate(-dist * 0.55, -dist * 0.95);
+      ctx.beginPath();
+      ctx.moveTo(-dist * 0.22, 0);
+      ctx.lineTo(0, -dist * 0.48);
+      ctx.lineTo(dist * 0.22, 0);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.85)';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ff007f';
+      ctx.stroke();
+      ctx.restore();
+
+      // Right ear
+      ctx.save();
+      ctx.translate(dist * 0.55, -dist * 0.95);
+      ctx.beginPath();
+      ctx.moveTo(-dist * 0.22, 0);
+      ctx.lineTo(0, -dist * 0.48);
+      ctx.lineTo(dist * 0.22, 0);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.85)';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ff007f';
+      ctx.stroke();
+      ctx.restore();
+
+      // Kitty Nose
+      const ntX = positions[33][0] - center.x;
+      const ntY = positions[33][1] - center.y;
+      const cosA = Math.cos(-angle);
+      const sinA = Math.sin(-angle);
+      const rotatedNtX = ntX * cosA - ntY * sinA;
+      const rotatedNtY = ntX * sinA + ntY * cosA;
+
+      ctx.save();
+      ctx.translate(rotatedNtX, rotatedNtY);
+      ctx.beginPath();
+      ctx.moveTo(-dist * 0.08, -dist * 0.04);
+      ctx.lineTo(dist * 0.08, -dist * 0.04);
+      ctx.lineTo(0, dist * 0.05);
+      ctx.closePath();
+      ctx.fillStyle = '#ff007f';
+      ctx.fill();
+      ctx.restore();
+
+      // Whiskers relative to mouth/cheeks
+      const mcX = positions[57][0] - center.x;
+      const mcY = positions[57][1] - center.y;
+      const rotatedMcX = mcX * cosA - mcY * sinA;
+      const rotatedMcY = mcX * sinA + mcY * cosA;
+
+      ctx.save();
+      ctx.translate(rotatedMcX, rotatedMcY - dist * 0.1);
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.8)';
+      
+      // Left whiskers
+      ctx.beginPath();
+      ctx.moveTo(-dist * 0.2, -dist * 0.05); ctx.lineTo(-dist * 0.75, -dist * 0.18);
+      ctx.moveTo(-dist * 0.2, 0);           ctx.lineTo(-dist * 0.9, 0);
+      ctx.moveTo(-dist * 0.2, dist * 0.05);  ctx.lineTo(-dist * 0.8, dist * 0.18);
+      
+      // Right whiskers
+      ctx.moveTo(dist * 0.2, -dist * 0.05);  ctx.lineTo(dist * 0.75, -dist * 0.18);
+      ctx.moveTo(dist * 0.2, 0);            ctx.lineTo(dist * 0.9, 0);
+      ctx.moveTo(dist * 0.2, dist * 0.05);   ctx.lineTo(dist * 0.8, dist * 0.18);
+      ctx.stroke();
+      ctx.restore();
+    }
+    else if (filterType === 'sunglasses') {
+      // Pixelated "Thug Life" Sunglasses
+      ctx.fillStyle = '#111';
+      // Left lens
+      ctx.fillRect(-dist * 0.6, -dist * 0.25, dist * 0.5, dist * 0.35);
+      // Right lens
+      ctx.fillRect(dist * 0.1, -dist * 0.25, dist * 0.5, dist * 0.35);
+      // Bridge
+      ctx.fillRect(-dist * 0.1, -dist * 0.15, dist * 0.2, dist * 0.08);
+      
+      // White lens shines
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-dist * 0.5, -dist * 0.15, dist * 0.08, dist * 0.08);
+      ctx.fillRect(dist * 0.2, -dist * 0.15, dist * 0.08, dist * 0.08);
+
+      // Cigar relative to mouth center
+      const mcX = positions[57][0] - center.x;
+      const mcY = positions[57][1] - center.y;
+      const cosA = Math.cos(-angle);
+      const sinA = Math.sin(-angle);
+      const rotatedMcX = mcX * cosA - mcY * sinA;
+      const rotatedMcY = mcX * sinA + mcY * cosA;
+
+      ctx.save();
+      ctx.translate(rotatedMcX, rotatedMcY);
+      ctx.rotate(18 * Math.PI / 180);
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fillRect(0, -dist * 0.06, dist * 0.55, dist * 0.12);
+      ctx.fillStyle = '#ff4500';
+      ctx.fillRect(dist * 0.5, -dist * 0.06, dist * 0.05, dist * 0.12);
+      ctx.restore();
+    }
+    else if (filterType === 'crown') {
+      // Golden Crown
+      ctx.save();
+      ctx.translate(0, -dist * 0.95);
+      ctx.beginPath();
+      ctx.moveTo(-dist * 0.65, 0);
+      ctx.lineTo(-dist * 0.65, -dist * 0.45);
+      ctx.lineTo(-dist * 0.32, -dist * 0.18);
+      ctx.lineTo(0, -dist * 0.65);
+      ctx.lineTo(dist * 0.32, -dist * 0.18);
+      ctx.lineTo(dist * 0.65, -dist * 0.45);
+      ctx.lineTo(dist * 0.65, 0);
+      ctx.closePath();
+      
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#d4af37';
+      ctx.stroke();
+
+      // Gems
+      ctx.beginPath();
+      ctx.arc(-dist * 0.65, -dist * 0.45, dist * 0.05, 0, Math.PI * 2);
+      ctx.arc(0, -dist * 0.65, dist * 0.05, 0, Math.PI * 2);
+      ctx.arc(dist * 0.65, -dist * 0.45, dist * 0.05, 0, Math.PI * 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      ctx.restore();
+    }
+    else if (filterType === 'mustache') {
+      // Curled handlebar mustache
+      const mcX = positions[57][0] - center.x;
+      const mcY = positions[57][1] - center.y;
+      const cosA = Math.cos(-angle);
+      const sinA = Math.sin(-angle);
+      const rotatedMcX = mcX * cosA - mcY * sinA;
+      const rotatedMcY = mcX * sinA + mcY * cosA;
+
+      ctx.save();
+      ctx.translate(rotatedMcX, rotatedMcY - dist * 0.12);
+      ctx.beginPath();
+      // Left curl
+      ctx.bezierCurveTo(-dist * 0.15, -dist * 0.05, -dist * 0.4, dist * 0.05, -dist * 0.5, -dist * 0.1);
+      ctx.bezierCurveTo(-dist * 0.4, dist * 0.15, -dist * 0.15, dist * 0.02, 0, 0);
+      // Right curl
+      ctx.bezierCurveTo(dist * 0.15, -dist * 0.05, dist * 0.4, dist * 0.05, dist * 0.5, -dist * 0.1);
+      ctx.bezierCurveTo(dist * 0.4, dist * 0.15, dist * 0.15, dist * 0.02, 0, 0);
+      ctx.fillStyle = '#332211';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  };
+
   // Webcam capture helpers
   const startWebcam = async () => {
     if (!currentChat) return;
     setIsWebcamOpen(true);
     setSelectedWebcamFilter('none');
+    setSelectedWebcamARFilter('none');
     setCapturedPhotoBlob(null);
     setCapturedPhotoUrl(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       webcamStreamRef.current = stream;
+      
+      // Initialize clmtrackr
+      if (!webcamTrackerRef.current && window.clm) {
+        const tracker = new window.clm.tracker();
+        tracker.init(window.pModel);
+        webcamTrackerRef.current = tracker;
+      }
+
       // Attach stream after modal mounts
       setTimeout(() => {
-        if (webcamVideoRef.current) {
-          webcamVideoRef.current.srcObject = stream;
+        const video = webcamVideoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          video.onloadedmetadata = () => {
+            video.play();
+            // Start face tracker
+            if (webcamTrackerRef.current) {
+              webcamTrackerRef.current.start(video);
+            }
+            // Start render loop
+            webcamAnimIdRef.current = requestAnimationFrame(renderWebcamCanvas);
+          };
         }
-      }, 100);
+      }, 150);
     } catch (err) {
       console.error('Webcam access error:', err);
       alert('Could not access camera: ' + err.message);
@@ -1823,7 +2084,44 @@ export default function App() {
     }
   };
 
+  const renderWebcamCanvas = () => {
+    const video = webcamVideoRef.current;
+    const canvas = webcamCanvasRef.current;
+    if (!video || !canvas || video.paused || video.ended) {
+      webcamAnimIdRef.current = requestAnimationFrame(renderWebcamCanvas);
+      return;
+    }
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw raw video frame onto canvas
+    ctx.drawImage(video, 0, 0, width, height);
+
+    // Get tracker landmarks and draw AR overlay
+    if (webcamTrackerRef.current) {
+      const positions = webcamTrackerRef.current.getCurrentPosition();
+      if (positions) {
+        drawAROverlay(ctx, positions, selectedWebcamARFilterRef.current);
+      }
+    }
+
+    webcamAnimIdRef.current = requestAnimationFrame(renderWebcamCanvas);
+  };
+
   const stopWebcam = () => {
+    if (webcamAnimIdRef.current) {
+      cancelAnimationFrame(webcamAnimIdRef.current);
+      webcamAnimIdRef.current = null;
+    }
+    if (webcamTrackerRef.current) {
+      webcamTrackerRef.current.stop();
+    }
     if (webcamStreamRef.current) {
       webcamStreamRef.current.getTracks().forEach(t => t.stop());
       webcamStreamRef.current = null;
@@ -1837,19 +2135,21 @@ export default function App() {
   };
 
   const captureWebcamPhoto = () => {
-    const video = webcamVideoRef.current;
-    if (!video) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
+    const liveCanvas = webcamCanvasRef.current;
+    if (!liveCanvas) return;
+
+    // Create temporary canvas to burn in selected CSS filter
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = liveCanvas.width;
+    tempCanvas.height = liveCanvas.height;
+    const ctx = tempCanvas.getContext('2d');
     
-    // Apply selected live filter to the canvas drawing context
-    applyFilterToCanvas(ctx, canvas.width, canvas.height, selectedWebcamFilter);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Apply selected live filter to the canvas context
+    applyFilterToCanvas(ctx, tempCanvas.width, tempCanvas.height, selectedWebcamFilter);
+    ctx.drawImage(liveCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
     ctx.filter = 'none'; // reset filter
     
-    canvas.toBlob((blob) => {
+    tempCanvas.toBlob((blob) => {
       if (!blob) {
         alert('Failed to process image capture.');
         return;
@@ -7519,22 +7819,62 @@ export default function App() {
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                 ) : (
-                  <video
-                    ref={webcamVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className={`filter-${selectedWebcamFilter}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'filter 0.2s ease' }}
-                  />
+                  <>
+                    <video
+                      ref={webcamVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      style={{ display: 'none' }}
+                    />
+                    <canvas
+                      ref={webcamCanvasRef}
+                      className={`filter-${selectedWebcamFilter}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'filter 0.2s ease' }}
+                    />
+                  </>
                 )}
                 {/* Shutter overlay ring */}
                 <div style={{ position: 'absolute', inset: 0, border: '3px solid rgba(255,255,255,0.15)', borderRadius: '14px', pointerEvents: 'none' }} />
               </div>
 
               {!capturedPhotoUrl && (
-                <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Live Filters (27 options):</span>
+                <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  
+                  {/* AR Face Tracking Effects */}
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>🎭 AR Face Tracking Effects:</span>
+                  <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
+                    {[
+                      { name: 'No AR 🚫', key: 'none' },
+                      { name: 'Puppy Dog 🐶', key: 'dog' },
+                      { name: 'Neon Kitty 🐱', key: 'cat' },
+                      { name: 'Thug Life 😎', key: 'sunglasses' },
+                      { name: 'Gold Crown 👑', key: 'crown' },
+                      { name: 'Mustache 👨', key: 'mustache' }
+                    ].map(f => (
+                      <button
+                        key={f.key}
+                        onClick={() => setSelectedWebcamARFilter(f.key)}
+                        className={`call-filter-chip ${selectedWebcamARFilter === f.key ? 'active' : ''}`}
+                        style={{
+                          flexShrink: 0,
+                          padding: '6px 12px',
+                          fontSize: '0.72rem',
+                          borderRadius: '20px',
+                          background: selectedWebcamARFilter === f.key ? 'var(--bg-accent-teal)' : 'var(--bg-secondary)',
+                          border: selectedWebcamARFilter === f.key ? '1px solid var(--bg-accent-teal)' : '1px solid var(--border-color)',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>✨ Live Color Filters (27 options):</span>
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'Normal', key: 'none', filterClass: 'filter-normal' },
