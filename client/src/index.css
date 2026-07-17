@@ -3349,3 +3349,96 @@ input:checked + .switch-slider:before {
   .sidebar { width: 260px !important; min-width: 260px !important; }
   .featured-rooms-list { grid-template-columns: 1fr !important; }
 }
+
+/* ============================================================
+   FINAL MOBILE FIXES — black nav box + missing emoji/mic
+   ============================================================ */
+@media (max-width: 768px) {
+  /* FIX 1: Black square — vertical nav must be fully hidden on mobile.
+     The app uses a bottom-nav-bar instead. Override everything. */
+  .vertical-nav-bar {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+
+  /* FIX 2: Main content takes full width (no nav offset) */
+  .main-content-pane {
+    left: 0 !important;
+    width: 100vw !important;
+    height: calc(100dvh - 60px) !important; /* leave room for bottom nav */
+  }
+
+  /* FIX 3: Sidebar slides in from left (no nav offset) */
+  .sidebar {
+    left: -100vw !important;
+  }
+  .app-layout.mobile-menu-open .sidebar {
+    left: 0 !important;
+  }
+
+  /* FIX 4: chat-list-view — sidebar full width */
+  .app-layout.chat-list-view .sidebar {
+    left: 0 !important;
+    width: 100vw !important;
+  }
+
+  /* FIX 5: Input bar — two rows always visible, emoji + mic on row 2 */
+  .chat-input-bar {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 900 !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    padding: 8px 10px 10px !important;
+    background: var(--bg-secondary) !important;
+    border-top: 1px solid var(--border-color) !important;
+  }
+
+  .input-row-main {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .input-row-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Emoji button always visible */
+  .input-row-actions .input-icon-btn,
+  .input-row-actions label.input-icon-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Voice filter select: don't overflow */
+  .voice-filter-select {
+    flex: 1 !important;
+    min-width: 0 !important;
+    max-width: 110px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .chat-text-input {
+    font-size: 16px !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+}
