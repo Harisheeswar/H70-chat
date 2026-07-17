@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import { db, connectMongo } from './db.js';
+import { db, connectMongo, readData } from './db.js';
 
 dotenv.config();
 
@@ -327,6 +327,28 @@ app.get('/api/users', (req, res) => {
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// 10.5. Supervisor: Audit All Chats & Images
+app.get('/api/supervisor/audit', authenticateToken, (req, res) => {
+  try {
+    const user = db.getUserById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const isSuper = user.role === 'supervisor' || user.email?.toLowerCase() === 'harisheeswar722@gmail.com' || user.nickname === 'hari980';
+    if (!isSuper) {
+      return res.status(403).json({ error: 'Access denied. Supervisor privileges required.' });
+    }
+
+    const data = readData();
+    res.json({
+      messages: data.messages || [],
+      users: (data.users || []).map(({ password, ...u }) => u),
+      rooms: data.rooms || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch audit data: ' + err.message });
   }
 });
 

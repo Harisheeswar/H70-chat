@@ -303,6 +303,12 @@ export default function App() {
 
   const [unreadCounts, setUnreadCounts] = useState({});
   const [roomUnreadCounts, setRoomUnreadCounts] = useState({});
+  
+  // Supervisor Audit Panel States
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [auditData, setAuditData] = useState(null);
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [auditSearchQuery, setAuditSearchQuery] = useState('');
   const totalUnread = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   const currentChatRef = useRef(currentChat);
@@ -2656,6 +2662,25 @@ export default function App() {
     return p ? p.userId : '';
   };
 
+  const fetchAuditLogs = async () => {
+    setIsAuditLoading(true);
+    try {
+      const res = await fetch('/api/supervisor/audit', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch audit data');
+      setAuditData(data);
+      setIsAuditModalOpen(true);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsAuditLoading(false);
+    }
+  };
+
 
   // Custom Voice message audio player hook
   const AudioPlayer = ({ src }) => {
@@ -2951,6 +2976,19 @@ export default function App() {
             <Dices size={20} />
             <span>Games</span>
           </button>
+
+          {user?.role === 'supervisor' && (
+            <button 
+              className="vertical-nav-btn" 
+              onClick={fetchAuditLogs} 
+              title="Supervisor Audit Logs"
+              disabled={isAuditLoading}
+              style={{ opacity: isAuditLoading ? 0.6 : 1 }}
+            >
+              <Eye size={20} />
+              <span>Audit Logs</span>
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
@@ -7099,6 +7137,18 @@ export default function App() {
           <Dices size={20} />
           <span>Games Hub</span>
         </button>
+
+        {user?.role === 'supervisor' && (
+          <button 
+            className="bottom-nav-btn"
+            onClick={fetchAuditLogs}
+            disabled={isAuditLoading}
+            style={{ opacity: isAuditLoading ? 0.6 : 1 }}
+          >
+            <Eye size={20} />
+            <span>Audit Logs</span>
+          </button>
+        )}
       </div>
 
       {/* 9. Contact Options Bottom Sheet Dialog (Screenshot 2) */}
@@ -7590,6 +7640,128 @@ export default function App() {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Supervisor Audit Logs Modal */}
+      {isAuditModalOpen && auditData && (
+        <div className="bottom-sheet-backdrop" style={{ zIndex: 12000 }} onClick={() => setIsAuditModalOpen(false)}>
+          <div className="bottom-sheet-content animate-slide-up" style={{ maxHeight: '92vh', width: '100%', maxWidth: '900px', display: 'flex', flexDirection: 'column', margin: '0 auto' }} onClick={e => e.stopPropagation()}>
+            <div className="bottom-sheet-header">
+              <span className="bottom-sheet-title">🛡️ Supervisor Chat & Media Audit Logs</span>
+              <button className="bottom-sheet-close" onClick={() => setIsAuditModalOpen(false)}><X size={20} /></button>
+            </div>
+            <div className="bottom-sheet-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflowY: 'auto' }}>
+              
+              {/* Search & Filters */}
+              <div style={{ display: 'flex', gap: '0.75rem', width: '100%', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="Search sender, recipient, content..."
+                  value={auditSearchQuery}
+                  onChange={(e) => setAuditSearchQuery(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1.5px solid var(--border-color)',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    outline: 'none',
+                    minWidth: '200px'
+                  }}
+                />
+              </div>
+
+              {/* Messages Audit Table/List */}
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', minHeight: 0 }}>
+                {(() => {
+                  const filtered = (auditData.messages || []).filter(m => {
+                    const query = auditSearchQuery.toLowerCase();
+                    const matchText = (m.content || '').toLowerCase();
+                    const matchSender = (m.senderNickname || '').toLowerCase() || (m.senderId || '').toLowerCase();
+                    const matchRecipient = (m.recipientId || '').toLowerCase();
+                    const matchType = (m.type || '').toLowerCase();
+                    
+                    return matchText.includes(query) || matchSender.includes(query) || matchRecipient.includes(query) || matchType.includes(query);
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        No audit records match the current filter.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map(m => {
+                    const isDM = !!m.chatKey;
+                    let recipientNickname = '';
+                    if (isDM && m.recipientId) {
+                      const recUser = (auditData.users || []).find(u => u.id === m.recipientId);
+                      recipientNickname = recUser ? recUser.nickname : m.recipientId;
+                    }
+
+                    return (
+                      <div key={m.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', textAlign: 'left' }}>
+                        
+                        {/* Message Metadata Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <span style={{ background: isDM ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)', color: isDM ? '#3b82f6' : '#10b981', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                              {isDM ? '💬 Private DM' : '🏢 Room'}
+                            </span>
+                            {!isDM && m.roomId && (
+                              <span>Room ID: <strong>{m.roomId}</strong></span>
+                            )}
+                          </div>
+                          <span>{new Date(m.createdAt).toLocaleString()}</span>
+                        </div>
+
+                        {/* Sender & Recipient Details */}
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                          From: <strong>{m.senderNickname}</strong> <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>({m.senderId})</span>
+                          {isDM && (
+                            <>
+                              {' '}→ To: <strong>{recipientNickname}</strong> <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>({m.recipientId})</span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Content Area */}
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '8px', wordBreak: 'break-word' }}>
+                          {m.type === 'text' && m.content}
+                          {(m.type === 'image' || m.type === 'image_view_once') && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>
+                                🖼️ Image {m.type === 'image_view_once' && '(View Once)'}
+                              </span>
+                              {m.mediaUrl ? (
+                                <img
+                                  src={m.mediaUrl}
+                                  alt="Audit Media"
+                                  style={{ maxWidth: '260px', maxHeight: '180px', borderRadius: '6px', cursor: 'pointer', objectFit: 'contain' }}
+                                  onClick={() => window.open(m.mediaUrl, '_blank')}
+                                />
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>[Media file URL missing]</span>
+                              )}
+                            </div>
+                          )}
+                          {m.type === 'audio' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 600 }}>🎙️ Voice Recording</span>
+                              {m.mediaUrl && <audio src={m.mediaUrl} controls style={{ maxWidth: '240px', height: '36px' }} />}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
             </div>
           </div>
         </div>
