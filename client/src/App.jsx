@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { ANIMALS_LIST } from './animals';
+import { useARCamera } from './useARCamera';
 
 // AR Mask Image
 const animeMaskImg = new Image();
@@ -212,6 +213,7 @@ export default function App() {
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState(null);
   const webcamVideoRef = useRef(null);
   const webcamCanvasRef = useRef(null);
+  const webcamWebGlCanvasRef = useRef(null);
   const webcamTrackerRef = useRef(null);
   const webcamAnimIdRef = useRef(null);
   const webcamStreamRef = useRef(null);
@@ -220,6 +222,9 @@ export default function App() {
   useEffect(() => {
     selectedWebcamARFilterRef.current = selectedWebcamARFilter;
   }, [selectedWebcamARFilter]);
+
+  // Hook for 3D AR Camera
+  useARCamera(webcamVideoRef, webcamWebGlCanvasRef, selectedWebcamARFilter);
 
   // Video Call Filter States
   const [localVideoFilter, setLocalVideoFilter] = useState('none');
@@ -2271,7 +2276,16 @@ export default function App() {
     if (webcamTrackerRef.current) {
       const positions = webcamTrackerRef.current.getCurrentPosition();
       if (positions) {
-        drawAROverlay(ctx, positions, selectedWebcamARFilterRef.current);
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+
+        // We skip drawAROverlay if it's the 3D filter, since WebGL handles it
+        if (selectedWebcamARFilterRef.current !== 'anime3d') {
+          drawAROverlay(ctx, positions, selectedWebcamARFilterRef.current);
+        }
+      
+        ctx.restore();
       }
     }
 
@@ -7970,7 +7984,11 @@ export default function App() {
                     <canvas
                       ref={webcamCanvasRef}
                       className={`filter-${selectedWebcamFilter}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'filter 0.2s ease' }}
+                      style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'filter 0.2s ease', top: 0, left: 0 }}
+                    />
+                    <canvas
+                      ref={webcamWebGlCanvasRef}
+                      style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', display: selectedWebcamARFilter === 'anime3d' ? 'block' : 'none', top: 0, left: 0, pointerEvents: 'none', zIndex: 10 }}
                     />
                   </>
                 )}
@@ -7986,7 +8004,8 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'No AR 🚫', key: 'none' },
-                      { name: 'Anime 🌸', key: 'anime' },
+                      { name: 'Anime 3D 💫', key: 'anime3d' },
+                      { name: 'Anime 2D 🌸', key: 'anime' },
                       { name: 'Puppy 🐶', key: 'dog' },
                       { name: 'Kitty 🐱', key: 'cat' },
                       { name: 'Bunny 🐰', key: 'bunny' },
