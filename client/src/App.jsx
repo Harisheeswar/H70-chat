@@ -2039,10 +2039,158 @@ export default function App() {
       ctx.restore();
     }
 
+    else if (filterType === 'bunny') {
+      // Bunny ears — tall white with pink inside
+      const drawEar = (side) => {
+        ctx.save();
+        ctx.translate(side * dist * 0.45, -dist * 0.9);
+        ctx.rotate(side * 12 * Math.PI / 180);
+        ctx.beginPath();
+        ctx.ellipse(0, -dist * 0.5, dist * 0.17, dist * 0.55, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(0, -dist * 0.5, dist * 0.08, dist * 0.35, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffb6c1';
+        ctx.fill();
+        ctx.restore();
+      };
+      drawEar(-1); drawEar(1);
+      // Pink bunny nose
+      const ntX = positions[33][0] - center.x;
+      const ntY = positions[33][1] - center.y;
+      const cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+      const rnx = ntX * cosA - ntY * sinA, rny = ntX * sinA + ntY * cosA;
+      ctx.save();
+      ctx.translate(rnx, rny);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, dist * 0.1, dist * 0.07, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff69b4';
+      ctx.fill();
+      ctx.restore();
+    }
+    else if (filterType === 'alien') {
+      // Big alien eyes + antenna
+      const leX = positions[27][0] - center.x, leY = positions[27][1] - center.y;
+      const reX = positions[32][0] - center.x, reY = positions[32][1] - center.y;
+      const cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+      const rotLE = { x: leX * cosA - leY * sinA, y: leX * sinA + leY * cosA };
+      const rotRE = { x: reX * cosA - reY * sinA, y: reX * sinA + reY * cosA };
+      // Left eye glow
+      ctx.save(); ctx.translate(rotLE.x, rotLE.y);
+      ctx.beginPath(); ctx.ellipse(0, 0, dist * 0.25, dist * 0.32, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,255,80,0.35)'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, dist * 0.13, dist * 0.17, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#00ff50'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-dist * 0.04, -dist * 0.04, dist * 0.04, dist * 0.04, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.restore();
+      // Right eye glow
+      ctx.save(); ctx.translate(rotRE.x, rotRE.y);
+      ctx.beginPath(); ctx.ellipse(0, 0, dist * 0.25, dist * 0.32, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,255,80,0.35)'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, dist * 0.13, dist * 0.17, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#00ff50'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-dist * 0.04, -dist * 0.04, dist * 0.04, dist * 0.04, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.restore();
+      // Antenna
+      ctx.save(); ctx.translate(0, -dist * 0.9);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -dist * 0.6);
+      ctx.strokeStyle = '#00ff50'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, -dist * 0.6, dist * 0.08, 0, Math.PI * 2);
+      ctx.fillStyle = '#00ff50'; ctx.fill();
+      ctx.restore();
+    }
+    else if (filterType === 'bear') {
+      // Bear ears
+      const drawBearEar = (side) => {
+        ctx.save(); ctx.translate(side * dist * 0.58, -dist * 0.85);
+        ctx.beginPath(); ctx.arc(0, 0, dist * 0.22, 0, Math.PI * 2);
+        ctx.fillStyle = '#8b5a2b'; ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, dist * 0.13, 0, Math.PI * 2);
+        ctx.fillStyle = '#d2956a'; ctx.fill();
+        ctx.restore();
+      };
+      drawBearEar(-1); drawBearEar(1);
+      // Bear snout at mouth center
+      const mcX = positions[57][0] - center.x, mcY = positions[57][1] - center.y;
+      const cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+      const rmx = mcX * cosA - mcY * sinA, rmy = mcX * sinA + mcY * cosA;
+      ctx.save(); ctx.translate(rmx, rmy - dist * 0.08);
+      ctx.beginPath(); ctx.ellipse(0, 0, dist * 0.28, dist * 0.2, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#d2956a'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, -dist * 0.06, dist * 0.1, dist * 0.07, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#333'; ctx.fill();
+      ctx.restore();
+    }
+    else if (filterType === 'fire') {
+      // Fire halo above head
+      ctx.save(); ctx.translate(0, -dist * 1.0);
+      const fireColors = ['#ff0000','#ff4400','#ff8800','#ffcc00','#ffffff'];
+      for (let f = 0; f < 7; f++) {
+        const fx = (f - 3) * dist * 0.2;
+        const fh = dist * (0.4 + Math.random() * 0.3);
+        const grad = ctx.createLinearGradient(fx, 0, fx, -fh);
+        grad.addColorStop(0, '#ff4400'); grad.addColorStop(0.5, '#ff8800'); grad.addColorStop(1, 'rgba(255,220,0,0)');
+        ctx.beginPath();
+        ctx.moveTo(fx - dist * 0.08, 0);
+        ctx.bezierCurveTo(fx - dist * 0.12, -fh * 0.5, fx + dist * 0.12, -fh * 0.5, fx + dist * 0.08, -fh);
+        ctx.bezierCurveTo(fx + dist * 0.04, -fh * 0.6, fx - dist * 0.04, -fh * 0.6, fx - dist * 0.08, 0);
+        ctx.fillStyle = grad; ctx.fill();
+      }
+      ctx.restore();
+    }
+    else if (filterType === 'rainbow') {
+      // Rainbow arch glasses
+      const arcColors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6'];
+      arcColors.forEach((c, i) => {
+        const r = dist * (0.55 + i * 0.06);
+        ctx.beginPath();
+        ctx.arc(0, 0, r, Math.PI, 0, false);
+        ctx.strokeStyle = c; ctx.lineWidth = dist * 0.07;
+        ctx.stroke();
+      });
+      // Sunglasses rim
+      ctx.beginPath();
+      ctx.arc(-dist * 0.35, dist * 0.05, dist * 0.25, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(dist * 0.35, dist * 0.05, dist * 0.25, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3; ctx.stroke();
+    }
+    else if (filterType === 'devil') {
+      // Devil horns
+      const drawHorn = (side) => {
+        ctx.save(); ctx.translate(side * dist * 0.45, -dist * 0.85);
+        ctx.beginPath();
+        ctx.moveTo(-dist * 0.15, 0); ctx.lineTo(0, -dist * 0.5); ctx.lineTo(dist * 0.15, 0);
+        ctx.closePath(); ctx.fillStyle = '#dc2626'; ctx.fill();
+        ctx.restore();
+      };
+      drawHorn(-1); drawHorn(1);
+      // Devil tail hint at chin
+      const chinX = positions[7][0] - center.x, chinY = positions[7][1] - center.y;
+      const cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+    }
+    else if (filterType === 'halo') {
+      // Glowing gold halo ring above head
+      ctx.save(); ctx.translate(0, -dist * 1.05);
+      const grad = ctx.createRadialGradient(0, 0, dist * 0.35, 0, 0, dist * 0.6);
+      grad.addColorStop(0, 'rgba(255,215,0,0.0)');
+      grad.addColorStop(0.6, 'rgba(255,215,0,0.8)');
+      grad.addColorStop(0.8, 'rgba(255,215,0,0.4)');
+      grad.addColorStop(1, 'rgba(255,215,0,0.0)');
+      ctx.beginPath(); ctx.arc(0, 0, dist * 0.55, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,215,0,0.9)'; ctx.lineWidth = dist * 0.12; ctx.stroke();
+      // Glow
+      ctx.beginPath(); ctx.arc(0, 0, dist * 0.55, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,200,0.4)'; ctx.lineWidth = dist * 0.22; ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.restore();
   };
-
-  // Webcam capture helpers
   const startWebcam = async () => {
     if (!currentChat) return;
     setIsWebcamOpen(true);
@@ -3953,52 +4101,70 @@ export default function App() {
                     })()}
 
                     {peopleTab === 'add' && (() => {
-                      // Show all registered users not already friends, with search filter
                       const allUsers = registeredUsers.length ? registeredUsers : onlineUsers;
-                      const browseable = allUsers.filter(u =>
+                      const query = searchPeopleQuery.trim().toLowerCase();
+                      const results = query.length < 1 ? [] : allUsers.filter(u =>
                         u.id !== user?.id &&
-                        !user?.friends?.includes(u.id) &&
-                        !user?.blockedUsers?.includes(u.id) &&
-                        u.nickname.toLowerCase().includes(searchPeopleQuery.toLowerCase())
+                        u.nickname.toLowerCase().includes(query)
                       );
                       return (
                         <div>
-                          <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {browseable.length} people you can add
-                          </div>
-                          {browseable.length === 0 ? (
-                            <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                              {searchPeopleQuery ? 'No users found matching your search.' : 'No new users to add right now.'}
+                          {!query && (
+                            <div style={{ padding: '2.5rem 1rem', textAlign: 'center' }}>
+                              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🔍</div>
+                              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '0.3rem' }}>Search for people</div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Type a name in the search box above</div>
                             </div>
-                          ) : browseable.map(u => {
+                          )}
+                          {query && results.length === 0 && (
+                            <div style={{ padding: '2.5rem 1rem', textAlign: 'center' }}>
+                              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>😕</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>No users found</div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Try a different name</div>
+                            </div>
+                          )}
+                          {results.map(u => {
                             const isOnline = onlineUsers.some(o => o.id === u.id);
-                            const hasSentRequest = u.friendRequests?.includes(user?.id);
-                            const hasReceivedRequest = user?.friendRequests?.includes(u.id);
+                            const isFriend = user?.friends?.includes(u.id) && u.friends?.includes(user?.id);
+                            const hasSent = user?.friends?.includes(u.id) && !isFriend;
+                            const hasReceived = !user?.friends?.includes(u.id) && u.friends?.includes(user?.id);
                             return (
-                              <div key={u.id} className="person-card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
-                                <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
-                                  <div className="avatar-circle" style={{ width: '36px', height: '36px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 'bold' }}>
-                                    {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname.substring(0, 1).toUpperCase()}
+                              <div
+                                key={u.id}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.75rem', borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
+                                onClick={() => setSelectedProfileUser(u)}
+                              >
+                                <div style={{ position: 'relative', flexShrink: 0 }}>
+                                  <div style={{ width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-accent)', color: '#fff', fontWeight: 700, fontSize: '1rem' }}>
+                                    {u.avatar ? <img src={u.avatar} alt={u.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : u.nickname[0].toUpperCase()}
                                   </div>
-                                  {isOnline && <span style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: '#10b981', border: '2px solid var(--bg-primary)' }} />}
+                                  {isOnline && <span style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: '50%', background: '#10b981', border: '2px solid var(--bg-primary)' }} />}
                                 </div>
-                                <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setSelectedProfileUser(u)}>
-                                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nickname}</div>
-                                  <div style={{ fontSize: '0.68rem', color: isOnline ? '#10b981' : 'var(--text-muted)' }}>{isOnline ? '● Online' : 'Offline'}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {u.nickname}
+                                    {isFriend && <span style={{ marginLeft: 6, fontSize: '0.65rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '1px 6px', borderRadius: 999, fontWeight: 600 }}>Friends ✓</span>}
+                                  </div>
+                                  <div style={{ fontSize: '0.7rem', color: isOnline ? '#10b981' : 'var(--text-muted)', marginTop: 1 }}>
+                                    {isOnline ? '● Online' : 'Offline'} · Tap to view profile
+                                  </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexShrink: 0 }}>
-                                  <button style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', cursor: 'pointer', padding: '2px 4px' }} title="Send message" onClick={() => { handleSelectChat(u, 'dm'); setCurrentNav('chat'); setActiveTab('dms'); }}>💬</button>
-                                  {hasReceivedRequest ? (
-                                    <button className="btn btn-primary" style={{ padding: '0.2rem 0.55rem', fontSize: '0.68rem' }} onClick={() => handleAcceptFriend(u.id)}>✓ Accept</button>
+                                <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                  <button title="Send message" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: 8, padding: '5px 9px', fontSize: '0.8rem', cursor: 'pointer' }}
+                                    onClick={() => { handleSelectChat(u, 'dm'); setCurrentNav('chat'); setActiveTab('dms'); }}>💬</button>
+                                  {isFriend ? (
+                                    <button disabled style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, padding: '5px 9px', fontSize: '0.75rem', color: '#10b981', cursor: 'default' }}>✓</button>
+                                  ) : hasReceived ? (
+                                    <button className="btn btn-primary" style={{ padding: '5px 10px', fontSize: '0.72rem', borderRadius: 8 }} onClick={() => handleAcceptFriend(u.id)}>Accept</button>
                                   ) : (
-                                    <button className="btn btn-secondary" style={{ padding: '0.2rem 0.55rem', fontSize: '0.68rem', opacity: hasSentRequest ? 0.6 : 1 }} disabled={hasSentRequest} onClick={() => !hasSentRequest && handleSendFriendRequest(u.id)}>
-                                      {hasSentRequest ? 'Sent ✓' : '+ Add'}
-                                    </button>
+                                    <button style={{ background: hasSent ? 'transparent' : 'rgba(124,77,255,0.12)', border: '1px solid rgba(124,77,255,0.35)', borderRadius: 8, padding: '5px 10px', fontSize: '0.72rem', cursor: hasSent ? 'default' : 'pointer', color: 'var(--bg-accent)', opacity: hasSent ? 0.6 : 1 }}
+                                      disabled={hasSent} onClick={() => !hasSent && handleSendFriendRequest(u.id)}>{hasSent ? 'Sent ✓' : '+ Add'}</button>
                                   )}
                                 </div>
                               </div>
                             );
                           })}
+                          {results.length > 0 && <div style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)' }}>Tap a person to view full profile</div>}
                         </div>
                       );
                     })()}
@@ -7846,11 +8012,18 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'No AR 🚫', key: 'none' },
-                      { name: 'Puppy Dog 🐶', key: 'dog' },
-                      { name: 'Neon Kitty 🐱', key: 'cat' },
+                      { name: 'Puppy 🐶', key: 'dog' },
+                      { name: 'Kitty 🐱', key: 'cat' },
+                      { name: 'Bunny 🐰', key: 'bunny' },
+                      { name: 'Bear 🐻', key: 'bear' },
+                      { name: 'Alien 👽', key: 'alien' },
                       { name: 'Thug Life 😎', key: 'sunglasses' },
-                      { name: 'Gold Crown 👑', key: 'crown' },
-                      { name: 'Mustache 👨', key: 'mustache' }
+                      { name: 'Crown 👑', key: 'crown' },
+                      { name: 'Mustache 👨', key: 'mustache' },
+                      { name: 'On Fire 🔥', key: 'fire' },
+                      { name: 'Rainbow 🌈', key: 'rainbow' },
+                      { name: 'Devil 😈', key: 'devil' },
+                      { name: 'Halo 😇', key: 'halo' },
                     ].map(f => (
                       <button
                         key={f.key}
