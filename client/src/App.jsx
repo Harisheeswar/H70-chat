@@ -10,6 +10,7 @@ import {
 
 import { ANIMALS_LIST } from './animals';
 import { useARCamera } from './useARCamera';
+import { AnimeFilter } from './animeFilter';
 
 // AR Mask Image
 const animeMaskImg = new window.Image();
@@ -214,6 +215,7 @@ export default function App() {
   const webcamVideoRef = useRef(null);
   const webcamCanvasRef = useRef(null);
   const webcamWebGlCanvasRef = useRef(null);
+  const animeFilterRef = useRef(null);
   const webcamTrackerRef = useRef(null);
   const webcamAnimIdRef = useRef(null);
   const webcamStreamRef = useRef(null);
@@ -225,6 +227,33 @@ export default function App() {
 
   // Hook for 3D AR Camera
   useARCamera(webcamVideoRef, webcamWebGlCanvasRef, selectedWebcamARFilter);
+
+  // Mount/unmount the WebGL anime filter
+  useEffect(() => {
+    const isAnime = selectedWebcamARFilter === 'anime' || selectedWebcamARFilter === 'anime2d';
+    if (isAnime && isWebcamOpen && webcamVideoRef.current) {
+      // Destroy any existing instance first
+      if (animeFilterRef.current) { animeFilterRef.current.destroy(); animeFilterRef.current = null; }
+      // Wait for video to be ready
+      const tryMount = () => {
+        const video = webcamVideoRef.current;
+        if (!video) return;
+        if (video.readyState < 2) { setTimeout(tryMount, 200); return; }
+        const af = new AnimeFilter(video);
+        animeFilterRef.current = af;
+        // Append canvas to the same container as the webcam canvas
+        const container = webcamCanvasRef.current?.parentElement;
+        if (container) container.appendChild(af.getCanvas());
+      };
+      tryMount();
+    } else {
+      // Destroy when filter is changed away or webcam closed
+      if (animeFilterRef.current) { animeFilterRef.current.destroy(); animeFilterRef.current = null; }
+    }
+    return () => {
+      if (animeFilterRef.current) { animeFilterRef.current.destroy(); animeFilterRef.current = null; }
+    };
+  }, [selectedWebcamARFilter, isWebcamOpen]);
 
   // Video Call Filter States
   const [localVideoFilter, setLocalVideoFilter] = useState('none');
@@ -7988,7 +8017,7 @@ export default function App() {
                     />
                     <canvas
                       ref={webcamWebGlCanvasRef}
-                      style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', display: selectedWebcamARFilter === 'anime3d' ? 'block' : 'none', top: 0, left: 0, pointerEvents: 'none', zIndex: 10 }}
+                      style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', display: 'none', top: 0, left: 0, pointerEvents: 'none', zIndex: 10 }}
                     />
                   </>
                 )}
@@ -8004,8 +8033,7 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'No AR 🚫', key: 'none' },
-                      { name: 'Anime 3D 💫', key: 'anime3d' },
-                      { name: 'Anime 2D 🌸', key: 'anime' },
+                      { name: 'Anime ✨', key: 'anime' },
                       { name: 'Puppy 🐶', key: 'dog' },
                       { name: 'Kitty 🐱', key: 'cat' },
                       { name: 'Bunny 🐰', key: 'bunny' },
