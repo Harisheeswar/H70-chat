@@ -427,7 +427,26 @@ export async function createARSession(rawStream, initialEffect = 'none') {
   video.style.height = '1px';
   video.srcObject = rawStream;
   document.body.appendChild(video);
-  await video.play().catch(() => {});
+
+  try {
+    await video.play();
+  } catch (err) {
+    video.remove();
+    throw new Error('Could not start camera preview (browser blocked autoplay): ' + err.message);
+  }
+
+  // Guard against a video element that "plays" but never actually produces
+  // frames (seen on some browsers/permission edge-cases) — without this the
+  // canvas would just stay blank forever with zero error shown anywhere.
+  if (video.readyState < 2) {
+    await Promise.race([
+      new Promise((resolve) => video.addEventListener('loadeddata', resolve, { once: true })),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Camera did not produce any video frames (timed out after 8s)')), 8000)),
+    ]).catch((err) => {
+      video.remove();
+      throw err;
+    });
+  }
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -453,24 +472,63 @@ export async function createARSession(rawStream, initialEffect = 'none') {
 
   // Kick off the (potentially slow, network-fetched) model load in the
   // background — filters simply stay off ('none' behaviour) until ready.
+  // GPU delegate is preferred but a lot of devices (older phones, some
+  // laptops, some browsers) don't support it reliably — fall back to CPU,
+  // and don't let a stuck init hang forever.
+  function withTimeout(promise, ms, label) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+    ]);
+  }
+
   (async () => {
     try {
-      const { FaceLandmarker, FilesetResolver } = await loadVisionModule();
-      const filesetResolver = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      const { FaceLandmarker, FilesetResolver } = await withTimeout(
+        loadVisionModule(),
+        15000,
+        'Loading @mediapipe/tasks-vision'
       );
-      faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-        baseOptions: {
-          modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-          delegate: 'GPU',
-        },
+      const filesetResolver = await withTimeout(
+        FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'),
+        15000,
+        'Loading vision WASM fileset'
+      );
+
+      const baseModelOptions = {
+        modelAssetPath:
+          'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+      };
+      const commonOptions = {
         outputFaceBlendshapes: false,
         runningMode: 'VIDEO',
         numFaces: 1,
-      });
+      };
+
+      try {
+        faceLandmarker = await withTimeout(
+          FaceLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: { ...baseModelOptions, delegate: 'GPU' },
+            ...commonOptions,
+          }),
+          10000,
+          'Creating FaceLandmarker (GPU)'
+        );
+      } catch (gpuErr) {
+        console.warn('[H70 AR] GPU delegate failed, falling back to CPU.', gpuErr);
+        faceLandmarker = await withTimeout(
+          FaceLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: { ...baseModelOptions, delegate: 'CPU' },
+            ...commonOptions,
+          }),
+          15000,
+          'Creating FaceLandmarker (CPU)'
+        );
+      }
     } catch (err) {
-      console.warn('[H70 AR] Face tracking unavailable, filters that need face-tracking will be skipped.', err);
+      // Face-tracked filters (anime/glasses/dog/cat/mustache) simply won't
+      // draw — but the plain camera feed and 'sparkle'/'none' still work.
+      console.error('[H70 AR] Face tracking unavailable — filters that need it will be skipped:', err);
       faceLandmarker = null;
     }
   })();
