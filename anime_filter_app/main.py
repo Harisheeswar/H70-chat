@@ -9,95 +9,89 @@ cap = cv2.VideoCapture(0)
 # Request higher frame rates from the camera hardware (60-90 FPS)
 cap.set(cv2.CAP_PROP_FPS, 60)
 
-def get_dominant_color(roi):
-    """Calculates the average color of a specific face region."""
-    if roi.size == 0:
-        return (0, 0, 0)
-    avg_color = cv2.mean(roi)[:3]
-    return (int(avg_color[0]), int(avg_color[1]), int(avg_color[2]))
+def apply_eye_bulge(img, center_x, center_y, radius, scale):
+    """
+    Distorts pixels outward from a center point to magnify the eyes natively.
+    """
+    out_img = img.copy()
+    h, w = img.shape[:2]
+    
+    # Create coordinate grid
+    xs = np.arange(w)
+    ys = np.arange(h)
+    x_grid, y_grid = np.meshgrid(xs, ys)
+    
+    # Calculate distance from center
+    dx = x_grid - center_x
+    dy = y_grid - center_y
+    distance = np.sqrt(dx**2 + dy**2)
+    
+    # Create a mask for pixels within the radius
+    mask = distance < radius
+    
+    if np.any(mask):
+        # Calculate bulge mapping
+        dist_fraction = 1.0 - (distance[mask] / radius)
+        factor = 1.0 - scale * (dist_fraction ** 2)
+        
+        map_x = center_x + dx[mask] * factor
+        map_y = center_y + dy[mask] * factor
+        
+        map_x = np.clip(map_x, 0, w - 1).astype(np.float32)
+        map_y = np.clip(map_y, 0, h - 1).astype(np.float32)
+        
+        # Apply remap only to the masked area
+        out_img[mask] = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR)[mask]
+        
+    return out_img
 
 while True:
     ret, frame = cap.read()
     if not ret: break
-    # Re-enabled horizontal flip for a natural mirror effect
-    frame = cv2.flip(frame, 1)
-    h, w = frame.shape[:2]
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
-    # Track face
+    # Mirror effect
+    frame = cv2.flip(frame, 1)
+    
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.2, 5, minSize=(100, 100))
     
-    # Default fallback colors if no face is tracked yet
-    user_skin = (200, 200, 200)
-    user_hair = (30, 30, 30)
-    user_eyes = (0, 0, 0)
+    output_frame = frame.copy()
 
     for (x, y, w_face, h_face) in faces:
-        # --- STEP 1: EXTRACT USER'S PERSONALIZED COLOR PALETTE ---
-        
-        # Sample Skin: Center of the cheek/nose area
-        skin_roi = frame[y + int(h_face*0.5):y + int(h_face*0.7), x + int(w_face*0.3):x + int(w_face*0.7)]
-        user_skin = get_dominant_color(skin_roi)
-        
-        # Sample Hair: A small box safely above the forehead
-        hair_y = max(0, y - int(h_face * 0.15))
-        hair_roi = frame[hair_y:y, x + int(w_face*0.3):x + int(w_face*0.7)]
-        user_hair = get_dominant_color(hair_roi)
-
-        # Track eyes inside face region
         roi_gray = gray[y:y+h_face, x:x+w_face]
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 8, minSize=(30, 30))
         
-        for i, (ex, ey, ew, eh) in enumerate(eyes[:2]):
-            # Pinpoint eye center
+        # --- STEP 1: SNAPCHAT DOLL EYES (PIXEL BULGE) ---
+        # Instead of drawing fake circles, we magnify your actual eyes
+        for (ex, ey, ew, eh) in eyes[:2]:
             center_x = x + ex + (ew // 2)
             center_y = y + ey + (eh // 2)
             
-            # Sample Eye Color: Small inner circle of the detected eye box
-            eye_roi = frame[center_y-5:center_y+5, center_x-5:center_x+5]
-            user_eyes = get_dominant_color(eye_roi)
-
-            # --- STEP 2: DRAW CUSTOM ANIME EYES BASED ON USER DATA ---
-            # Instead of a basic distortion, we draw a sharp, stylized anime eye template 
-            # filled with the user's actual eye color and crisp white highlights.
-            eye_radius = int(ew * 0.6)
+            # Bulge radius based on detected eye width
+            eye_radius = int(ew * 0.9)
             
-            # 1. Base iris matching user's real eye color
-            cv2.circle(frame, (center_x, center_y), eye_radius, user_eyes, -1)
-            # 2. Oversized black pupil
-            cv2.circle(frame, (center_x, center_y), int(eye_radius * 0.5), (0, 0, 0), -1)
-            # 3. Anime-style white gloss highlight reflections
-            cv2.circle(frame, (center_x - int(eye_radius*0.3), center_y - int(eye_radius*0.3)), int(eye_radius * 0.25), (255, 255, 255), -1)
-            cv2.circle(frame, (center_x + int(eye_radius*0.3), center_y + int(eye_radius*0.3)), int(eye_radius * 0.1), (255, 255, 255), -1)
+            # Magnify the real eye pixels (Scale 0.45 stretches them smoothly)
+            output_frame = apply_eye_bulge(output_frame, center_x, center_y, eye_radius, 0.45)
 
-    # --- STEP 3: K-MEANS COLOR QUANTIZATION (CARTOON SHADING) ---
-    # To run at 60fps/90fps, we downscale the image significantly before running K-means
-    scale_factor = 0.25
-    small_frame = cv2.resize(frame, (0, 0), fx=scale_factor, fy=scale_factor)
-    data = small_frame.reshape((-1, 3)).astype(np.float32)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+    # --- STEP 2: DOLL SKIN SMOOTHING (GLAMOUR FILTER) ---
+    # We downscale by 50% before blurring to keep performance lightning fast (60fps)
+    h, w = output_frame.shape[:2]
+    small_frame = cv2.resize(output_frame, (w // 2, h // 2))
     
-    # Dynamically cluster pixels to match the user's ambient colors
-    _, label, center = cv2.kmeans(data, 4, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-    center = np.uint8(center)
-    quantized_small = center[label.flatten()].reshape((small_frame.shape))
+    # Bilateral filter removes pores/blemishes but keeps edges (eyes, mouth) totally sharp
+    smoothed_small = cv2.bilateralFilter(small_frame, d=9, sigmaColor=40, sigmaSpace=40)
+    smoothed_frame = cv2.resize(smoothed_small, (w, h), interpolation=cv2.INTER_LINEAR)
     
-    # Scale it back up to the original window size using nearest neighbor to keep the cartoon look sharp
-    quantized_frame = cv2.resize(quantized_small, (w, h), interpolation=cv2.INTER_NEAREST)
+    # --- STEP 3: COLOR POP & WARMTH (DOLL BLUSH EFFECT) ---
+    # Convert to HSV to gently boost saturation (color) and brightness
+    hsv = cv2.cvtColor(smoothed_frame, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[:, :, 1] *= 1.2  # Boost color saturation by 20%
+    hsv[:, :, 2] *= 1.05 # Boost brightness slightly
+    hsv = np.clip(hsv, 0, 255).astype(np.uint8)
+    final_frame = cv2.cvtColor(hsv, cv2.HSV_BGR)
 
-    # --- STEP 4: APPLY TO LOCAL BILATERAL PIPELINE ---
-    anime_color = cv2.bilateralFilter(quantized_frame, d=7, sigmaColor=50, sigmaSpace=50)
-    
-    # Generate clean cartoon borders
-    gray_blur = cv2.medianBlur(gray, 5)
-    ink_edges = cv2.adaptiveThreshold(gray_blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 3)
-    ink_edges_bgr = cv2.cvtColor(ink_edges, cv2.COLOR_GRAY2BGR)
-    
-    # Final blend
-    final_face_filter = cv2.bitwise_and(anime_color, ink_edges_bgr)
-    
-    # Render personalized output window
-    cv2.imshow('Personalized Local Anime Filter', final_face_filter)
+    # Render output
+    cv2.imshow('Snapchat Doll Style Lens', final_frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
