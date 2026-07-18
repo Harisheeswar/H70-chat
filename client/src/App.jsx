@@ -12,7 +12,7 @@ import { ANIMALS_LIST } from './animals';
 import { useARCamera } from './useARCamera';
 
 // AR Mask Image
-const animeMaskImg = new Image();
+const animeMaskImg = new window.Image();
 animeMaskImg.src = '/anime_mask.png';
 
 // Level Tiers Helper
