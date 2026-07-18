@@ -10,7 +10,7 @@ import {
 
 import { ANIMALS_LIST } from './animals';
 import { useARCamera } from './useARCamera';
-import { AnimeFilter } from './animeFilter';
+import { AnimeFilter, ANIME_STYLES, animeStyleIdFromKey } from './animeFilter';
 
 // AR Mask Image
 const animeMaskImg = new window.Image();
@@ -228,32 +228,41 @@ export default function App() {
   // Hook for 3D AR Camera
   useARCamera(webcamVideoRef, webcamWebGlCanvasRef, selectedWebcamARFilter);
 
-  // Mount/unmount the WebGL anime filter
+  // Mount/unmount the WebGL anime filter. Split into two effects on purpose:
+  // effect A only re-runs (destroy+rebuild the GL context) when entering/
+  // leaving the "anime" category or the webcam opens/closes. Effect B fires
+  // on every individual style change and just updates a uniform — if both
+  // were combined into one effect keyed on selectedWebcamARFilter, React's
+  // "run cleanup before every dependency change" behavior would destroy and
+  // rebuild the whole WebGL context on every single style switch, which is
+  // exactly the slow/flickery behavior we don't want with 6 styles to flip
+  // between.
+  const isAnimeFilter = selectedWebcamARFilter.startsWith('anime_');
+
   useEffect(() => {
-    const isAnime = selectedWebcamARFilter === 'anime' || selectedWebcamARFilter === 'anime2d';
-    if (isAnime && isWebcamOpen && webcamVideoRef.current) {
-      // Destroy any existing instance first
-      if (animeFilterRef.current) { animeFilterRef.current.destroy(); animeFilterRef.current = null; }
-      // Wait for video to be ready
+    if (isAnimeFilter && isWebcamOpen) {
       const tryMount = () => {
         const video = webcamVideoRef.current;
         if (!video) return;
         if (video.readyState < 2) { setTimeout(tryMount, 200); return; }
-        const af = new AnimeFilter(video);
+        const af = new AnimeFilter(video, animeStyleIdFromKey(selectedWebcamARFilterRef.current));
         animeFilterRef.current = af;
         // Append canvas to the same container as the webcam canvas
         const container = webcamCanvasRef.current?.parentElement;
         if (container) container.appendChild(af.getCanvas());
       };
       tryMount();
-    } else {
-      // Destroy when filter is changed away or webcam closed
-      if (animeFilterRef.current) { animeFilterRef.current.destroy(); animeFilterRef.current = null; }
     }
     return () => {
       if (animeFilterRef.current) { animeFilterRef.current.destroy(); animeFilterRef.current = null; }
     };
-  }, [selectedWebcamARFilter, isWebcamOpen]);
+  }, [isAnimeFilter, isWebcamOpen]);
+
+  useEffect(() => {
+    if (animeFilterRef.current && isAnimeFilter) {
+      animeFilterRef.current.setStyle(animeStyleIdFromKey(selectedWebcamARFilter));
+    }
+  }, [selectedWebcamARFilter, isAnimeFilter]);
 
   // Video Call Filter States
   const [localVideoFilter, setLocalVideoFilter] = useState('none');
@@ -8050,7 +8059,7 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'No AR 🚫', key: 'none' },
-                      { name: 'Anime ✨', key: 'anime' },
+                      ...ANIME_STYLES.map(s => ({ name: `${s.name} ${s.emoji}`, key: s.key })),
                       { name: 'Puppy 🐶', key: 'dog' },
                       { name: 'Kitty 🐱', key: 'cat' },
                       { name: 'Bunny 🐰', key: 'bunny' },
