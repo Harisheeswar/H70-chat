@@ -6,6 +6,8 @@ face_cascade = cv2.CascadeClassifier('assets/haarcascade_frontalface_default.xml
 eye_cascade = cv2.CascadeClassifier('assets/haarcascade_eye.xml')
 
 cap = cv2.VideoCapture(0)
+# Request higher frame rates from the camera hardware (60-90 FPS)
+cap.set(cv2.CAP_PROP_FPS, 60)
 
 def get_dominant_color(roi):
     """Calculates the average color of a specific face region."""
@@ -17,7 +19,8 @@ def get_dominant_color(roi):
 while True:
     ret, frame = cap.read()
     if not ret: break
-    # frame = cv2.flip(frame, 1) # Removed to fix inverted left/right movement
+    # Re-enabled horizontal flip for a natural mirror effect
+    frame = cv2.flip(frame, 1)
     h, w = frame.shape[:2]
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
@@ -68,15 +71,19 @@ while True:
             cv2.circle(frame, (center_x + int(eye_radius*0.3), center_y + int(eye_radius*0.3)), int(eye_radius * 0.1), (255, 255, 255), -1)
 
     # --- STEP 3: K-MEANS COLOR QUANTIZATION (CARTOON SHADING) ---
-    # To make the skin and hair look like flat anime art while retaining the user's identity,
-    # we compress all image colors into exactly 4 flat tones.
-    data = frame.reshape((-1, 3)).astype(np.float32)
+    # To run at 60fps/90fps, we downscale the image significantly before running K-means
+    scale_factor = 0.25
+    small_frame = cv2.resize(frame, (0, 0), fx=scale_factor, fy=scale_factor)
+    data = small_frame.reshape((-1, 3)).astype(np.float32)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
     
     # Dynamically cluster pixels to match the user's ambient colors
     _, label, center = cv2.kmeans(data, 4, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
     center = np.uint8(center)
-    quantized_frame = center[label.flatten()].reshape((frame.shape))
+    quantized_small = center[label.flatten()].reshape((small_frame.shape))
+    
+    # Scale it back up to the original window size using nearest neighbor to keep the cartoon look sharp
+    quantized_frame = cv2.resize(quantized_small, (w, h), interpolation=cv2.INTER_NEAREST)
 
     # --- STEP 4: APPLY TO LOCAL BILATERAL PIPELINE ---
     anime_color = cv2.bilateralFilter(quantized_frame, d=7, sigmaColor=50, sigmaSpace=50)
