@@ -1408,17 +1408,6 @@ export default function App() {
     }
   };
 
-  // Stranger Match (Random DM)
-  const handleRandomChat = () => {
-    const candidates = onlineUsers.filter(u => u.id !== user?.id && u.role !== 'supervisor');
-    if (candidates.length === 0) {
-      alert('No other active users online right now for a random match. Invite some friends!');
-      return;
-    }
-    const randomUser = candidates[Math.floor(Math.random() * candidates.length)];
-    handleSelectChat(randomUser, 'dm');
-  };
-
   // Create room modal
   const handleCreateRoom = (e) => {
     e.preventDefault();
@@ -3637,35 +3626,6 @@ export default function App() {
 
                   {roomSegment === 'all' && (
                     <>
-                      {/* Random Chat Banner */}
-                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem', margin: '0.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>Random Chat</h3>
-                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4, margin: '0 0 1rem' }}>
-                          We'll connect you to a completely random stranger. Enjoy the randomness. Make sure not to tell strangers personal stuff about you.
-                        </p>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <button 
-                            className="btn btn-secondary" 
-                            onClick={() => {
-                              const eligible = onlineUsers.filter(u => u.id !== user?.id);
-                              if (eligible.length > 0) {
-                                const randUser = eligible[Math.floor(Math.random() * eligible.length)];
-                                handleSelectChat(randUser, 'dm');
-                                setActiveTab('dms');
-                              } else {
-                                alert("No other users are currently online to start a random chat.");
-                              }
-                            }}
-                            style={{ padding: '0.45rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1.5px solid var(--bg-accent)', color: 'var(--bg-accent)', background: 'transparent', borderRadius: '24px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
-                          >
-                            🔀 START CHAT
-                          </button>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}>
-                            🟢 {onlineUsers.length * 13 + 128}
-                          </span>
-                        </div>
-                      </div>
-
                       {/* Featured Rooms Label */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem 0.25rem' }}>
                         <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>Group Chat - Featured</span>
@@ -5701,21 +5661,6 @@ export default function App() {
               </div>
               <h1 className="featured-rooms-title">Featured Channels</h1>
               <div className="featured-rooms-list">
-                <div className="featured-rooms-card">
-                  <h2 className="featured-rooms-card-title">Stranger Match (Random DM)</h2>
-                  <p className="featured-rooms-card-desc">
-                    Pair up with a random active user online. Safely chat, share media elements, and start video/audio calls with absolute privacy.
-                  </p>
-                  <div className="featured-rooms-card-footer">
-                    <button className="featured-rooms-btn-action" onClick={handleRandomChat}>
-                      START MATCH
-                    </button>
-                    <div className="featured-rooms-indicator">
-                      <span className="featured-rooms-dot"></span>
-                      <span>Active matching</span>
-                    </div>
-                  </div>
-                </div>
 
                 {rooms.length > 0 ? (
                   rooms.map(room => (
