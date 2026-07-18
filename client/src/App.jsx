@@ -5,10 +5,11 @@ import {
   Video, Phone, PhoneOff, MicOff, VideoOff, Edit, X, Compass, Award, 
   BookOpen, LogOut, CheckCircle, Mail, Key, ShieldAlert,
   Info, UserPlus, Ban, AlertTriangle, Check, ChevronDown, ChevronLeft, Search, Menu, Gamepad2,
-  DoorOpen, MessageCircle, Contact, Dices
+  DoorOpen, MessageCircle, Contact, Dices, Camera, RotateCcw, Wand2
 } from 'lucide-react';
 
 import { ANIMALS_LIST } from './animals';
+import { AR_EFFECTS, createARSession } from './arEffects';
 
 // Level Tiers Helper
 const getLevelTier = (level) => {
@@ -127,6 +128,14 @@ export default function App() {
   const [roomCallParticipants, setRoomCallParticipants] = useState([]); // Array of { socketId, userId, nickname, stream }
   const roomCallStreamsRef = useRef({}); // socketId -> MediaStream
   const roomCallPCsRef = useRef({}); // socketId -> RTCPeerConnection
+
+  // AR Camera Engine (face-filters for calls + live photo capture)
+  const [arEffect, setArEffect] = useState('none');
+  const [showEffectTray, setShowEffectTray] = useState(false);
+  const arSessionRef = useRef(null); // active ARCameraSession for calls
+  const [liveCamera, setLiveCamera] = useState(null); // { mode: 'story'|'avatar', photo: File|null }
+  const liveCameraSessionRef = useRef(null);
+  const liveCameraVideoRef = useRef(null);
 
   // Refs
   const socketRef = useRef(null);
@@ -1489,7 +1498,10 @@ export default function App() {
 
     const constraints = { audio: true, video: isVideo };
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const arSession = await createARSession(rawStream, arEffect);
+      arSessionRef.current = arSession;
+      const stream = arSession.stream;
       setLocalStream(stream);
 
       // Create Ringing state
@@ -1538,7 +1550,10 @@ export default function App() {
 
     const constraints = { audio: true, video: callState.isVideo };
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const arSession = await createARSession(rawStream, arEffect);
+      arSessionRef.current = arSession;
+      const stream = arSession.stream;
       setLocalStream(stream);
 
       const peerConnection = new RTCPeerConnection({
@@ -1594,7 +1609,10 @@ export default function App() {
   };
 
   const cleanupCall = () => {
-    if (localStream) {
+    if (arSessionRef.current) {
+      arSessionRef.current.stop();
+      arSessionRef.current = null;
+    } else if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
     }
     if (peerConnectionRef.current) {
@@ -1606,6 +1624,7 @@ export default function App() {
     setCallState(null);
     setIsMicMuted(false);
     setIsCameraOff(false);
+    setShowEffectTray(false);
   };
 
   // Toggle controls during active 1-on-1 calls
@@ -1625,6 +1644,108 @@ export default function App() {
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsCameraOff(!videoTrack.enabled);
+      }
+    }
+  };
+
+  // Switches the live AR filter for whichever camera session is currently active
+  // (a call in progress, or the standalone live-photo camera).
+  const selectArEffect = (id) => {
+    setArEffect(id);
+    arSessionRef.current?.setEffect(id);
+    liveCameraSessionRef.current?.setEffect(id);
+  };
+
+  // ----------------------------------------------------
+  // Live Camera Photo Capture (filtered stills for Stories / Profile Photo)
+  // ----------------------------------------------------
+  const openLiveCamera = (mode) => {
+    setLiveCamera({ mode, photo: null, photoUrl: null });
+  };
+
+  const closeLiveCamera = () => {
+    if (liveCameraSessionRef.current) {
+      liveCameraSessionRef.current.stop();
+      liveCameraSessionRef.current = null;
+    }
+    setLiveCamera(prev => {
+      if (prev?.photoUrl) URL.revokeObjectURL(prev.photoUrl);
+      return null;
+    });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (liveCamera && !liveCamera.photo && !liveCameraSessionRef.current) {
+      (async () => {
+        try {
+          const rawStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          if (cancelled) {
+            rawStream.getTracks().forEach(t => t.stop());
+            return;
+          }
+          const session = await createARSession(rawStream, arEffect);
+          liveCameraSessionRef.current = session;
+          if (liveCameraVideoRef.current) {
+            liveCameraVideoRef.current.srcObject = session.stream;
+          }
+        } catch (err) {
+          alert('Camera access denied: ' + err.message);
+          setLiveCamera(null);
+        }
+      })();
+    }
+    return () => { cancelled = true; };
+  }, [liveCamera]);
+
+  const captureLivePhoto = async () => {
+    if (!liveCameraSessionRef.current) return;
+    try {
+      const file = await liveCameraSessionRef.current.capturePhoto();
+      const photoUrl = URL.createObjectURL(file);
+      setLiveCamera(prev => ({ ...prev, photo: file, photoUrl }));
+    } catch (err) {
+      alert('Could not capture photo: ' + err.message);
+    }
+  };
+
+  const retakeLivePhoto = () => {
+    setLiveCamera(prev => {
+      if (prev?.photoUrl) URL.revokeObjectURL(prev.photoUrl);
+      return { ...prev, photo: null, photoUrl: null };
+    });
+  };
+
+  const useLivePhoto = async () => {
+    if (!liveCamera?.photo) return;
+    if (liveCamera.mode === 'story') {
+      setStoryFile(liveCamera.photo);
+      setStoryType('image');
+      closeLiveCamera();
+      return;
+    }
+    if (liveCamera.mode === 'avatar') {
+      try {
+        const formData = new FormData();
+        formData.append('media', liveCamera.photo);
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+        const avatarRes = await fetch('/api/profile/avatar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ avatarUrl: data.url })
+        });
+        const updatedUser = await avatarRes.json();
+        if (!avatarRes.ok) throw new Error(updatedUser.error || 'Update failed');
+
+        setUser(prev => ({ ...prev, avatar: updatedUser.avatar }));
+        setSelectedProfileUser(prev => prev ? { ...prev, avatar: updatedUser.avatar } : prev);
+      } catch (err) {
+        alert('Failed to update avatar: ' + err.message);
+      } finally {
+        closeLiveCamera();
       }
     }
   };
@@ -1659,8 +1780,10 @@ export default function App() {
   const joinRoomCall = async () => {
     try {
       // Default constraint: try video call
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      setLocalStream(stream);
+      const rawStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      const arSession = await createARSession(rawStream, arEffect);
+      arSessionRef.current = arSession;
+      setLocalStream(arSession.stream);
       setIsInRoomCall(true);
 
       // Notify server signaling room
@@ -1669,7 +1792,9 @@ export default function App() {
       // Fallback to audio-only if video fails/unavailable
       try {
         const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setLocalStream(audioStream);
+        const arSession = await createARSession(audioStream, arEffect);
+        arSessionRef.current = arSession;
+        setLocalStream(arSession.stream);
         setIsInRoomCall(true);
         socketRef.current?.emit('join-room-call', { roomId: currentChat.id, type: 'audio' });
       } catch (err2) {
@@ -1683,8 +1808,11 @@ export default function App() {
       socketRef.current?.emit('leave-room-call', { roomId: currentChat.id });
     }
 
-    // Stop tracks
-    if (localStream) {
+    // Stop tracks (AR session owns the raw camera + canvas tracks)
+    if (arSessionRef.current) {
+      arSessionRef.current.stop();
+      arSessionRef.current = null;
+    } else if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
     }
 
@@ -1696,6 +1824,7 @@ export default function App() {
     setLocalStream(null);
     setRoomCallParticipants([]);
     setIsInRoomCall(false);
+    setShowEffectTray(false);
   };
 
   const initiateRoomPeerConnection = async (targetSocketId, nickname, userId, isInitiator) => {
@@ -3537,10 +3666,30 @@ export default function App() {
                 <div className="room-call-banner">
                   <div className="room-call-header">
                     <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Active Voice/Video Mesh Call</span>
-                    <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={toggleRoomCall}>
-                      Leave Call
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }} onClick={() => setShowEffectTray(v => !v)}>
+                        <Wand2 size={13} /> Filters
+                      </button>
+                      <button className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={toggleRoomCall}>
+                        Leave Call
+                      </button>
+                    </div>
                   </div>
+                  {showEffectTray && (
+                    <div className="ar-effect-tray">
+                      {AR_EFFECTS.map(fx => (
+                        <button
+                          key={fx.id}
+                          className={`ar-effect-chip ${arEffect === fx.id ? 'active' : ''}`}
+                          onClick={() => selectArEffect(fx.id)}
+                          title={fx.label}
+                        >
+                          <span className="ar-effect-emoji">{fx.emoji}</span>
+                          <span className="ar-effect-label">{fx.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="room-call-grid">
                     {/* Render local self stream */}
                     <div className="room-call-user-card">
@@ -4365,8 +4514,16 @@ export default function App() {
           {/* Change Profile Picture Button (Registered users only on their own profiles) */}
           {selectedProfileUser.id === user?.id && token && (
             <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', marginRight: '0.5rem' }}
+                onClick={() => openLiveCamera('avatar')}
+              >
+                <Camera size={14} /> Live Camera
+              </button>
               <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                <Image size={14} /> Change Profile Picture
+                <Image size={14} /> Upload File
                 <input 
                   type="file" 
                   accept="image/*" 
@@ -5113,8 +5270,20 @@ export default function App() {
                     accept="image/*" 
                     className="auth-input"
                     onChange={(e) => setStoryFile(e.target.files[0])}
-                    required 
                   />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ marginTop: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+                    onClick={() => openLiveCamera('story')}
+                  >
+                    <Camera size={14} /> Use Live Camera
+                  </button>
+                  {storyFile && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Selected: {storyFile.name}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -5271,6 +5440,23 @@ export default function App() {
             </div>
           )}
 
+          {/* AR Filter Tray */}
+          {callState.isVideo && showEffectTray && (
+            <div className="ar-effect-tray">
+              {AR_EFFECTS.map(fx => (
+                <button
+                  key={fx.id}
+                  className={`ar-effect-chip ${arEffect === fx.id ? 'active' : ''}`}
+                  onClick={() => selectArEffect(fx.id)}
+                  title={fx.label}
+                >
+                  <span className="ar-effect-emoji">{fx.emoji}</span>
+                  <span className="ar-effect-label">{fx.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Active Call Controls */}
           <div className="call-control-footer">
             <button 
@@ -5288,14 +5474,76 @@ export default function App() {
               <PhoneOff size={16} />
             </button>
             {callState.isVideo && (
-              <button 
-                className={`control-circle-btn ${isCameraOff ? 'muted' : ''}`} 
-                onClick={toggleCamera}
-                title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
-              >
-                <VideoOff size={16} />
-              </button>
+              <>
+                <button 
+                  className={`control-circle-btn ${isCameraOff ? 'muted' : ''}`} 
+                  onClick={toggleCamera}
+                  title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
+                >
+                  <VideoOff size={16} />
+                </button>
+                <button
+                  className={`control-circle-btn ${showEffectTray ? 'active-tray' : ''}`}
+                  onClick={() => setShowEffectTray(v => !v)}
+                  title="Face filters"
+                >
+                  <Wand2 size={16} />
+                </button>
+              </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Live Camera Capture Modal (AR-filtered still photo) */}
+      {liveCamera && (
+        <div className="modal-overlay" onClick={closeLiveCamera}>
+          <div className="live-camera-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="live-camera-header">
+              <span>{liveCamera.mode === 'avatar' ? 'New Profile Photo' : 'Live Camera'}</span>
+              <button className="input-icon-btn" onClick={closeLiveCamera}><X size={18} /></button>
+            </div>
+
+            <div className="live-camera-frame">
+              {liveCamera.photo ? (
+                <img src={liveCamera.photoUrl} alt="Captured" className="live-camera-preview" />
+              ) : (
+                <video ref={liveCameraVideoRef} className="live-camera-preview" autoPlay muted playsInline />
+              )}
+            </div>
+
+            {!liveCamera.photo && (
+              <div className="ar-effect-tray ar-effect-tray-inline">
+                {AR_EFFECTS.map(fx => (
+                  <button
+                    key={fx.id}
+                    className={`ar-effect-chip ${arEffect === fx.id ? 'active' : ''}`}
+                    onClick={() => selectArEffect(fx.id)}
+                    title={fx.label}
+                  >
+                    <span className="ar-effect-emoji">{fx.emoji}</span>
+                    <span className="ar-effect-label">{fx.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="live-camera-controls">
+              {liveCamera.photo ? (
+                <>
+                  <button className="btn btn-secondary" onClick={retakeLivePhoto}>
+                    <RotateCcw size={14} /> Retake
+                  </button>
+                  <button className="btn btn-primary" onClick={useLivePhoto}>
+                    <Check size={14} /> Use Photo
+                  </button>
+                </>
+              ) : (
+                <button className="live-camera-shutter" onClick={captureLivePhoto} title="Capture">
+                  <span className="live-camera-shutter-ring" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

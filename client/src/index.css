@@ -2605,3 +2605,140 @@ textarea:focus-visible,
   transform: scale(1.2);
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* ----------------------------------------------------
+   AR Camera Filters (calls + live photo capture)
+---------------------------------------------------- */
+.ar-effect-tray {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.6rem 0.5rem;
+  margin: 0 0.5rem 0.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+}
+
+.ar-effect-tray-inline {
+  margin: 0.75rem 0;
+}
+
+.ar-effect-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 58px;
+  padding: 0.4rem 0.5rem;
+  background: var(--btn-secondary-bg);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.ar-effect-chip:hover {
+  background: var(--btn-secondary-hover-bg);
+}
+
+.ar-effect-chip.active {
+  border-color: var(--bg-accent);
+  color: var(--text-primary);
+  background: rgba(124, 77, 255, 0.15);
+}
+
+.ar-effect-emoji {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.ar-effect-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.control-circle-btn.active-tray {
+  background: var(--bg-accent);
+  color: #fff;
+}
+
+/* Live Camera capture modal */
+.live-camera-modal {
+  width: min(420px, 92vw);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.live-camera-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.1rem;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.live-camera-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: #000;
+  overflow: hidden;
+}
+
+.live-camera-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.live-camera-preview[src] {
+  transform: none; /* captured stills are already mirrored correctly by the AR canvas */
+}
+
+.live-camera-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.live-camera-shutter {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid rgba(124, 77, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-fast);
+}
+
+.live-camera-shutter:hover {
+  transform: scale(1.05);
+  border-color: var(--bg-accent);
+}
+
+.live-camera-shutter-ring {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #d1d5db;
+}
