@@ -17,7 +17,7 @@ def get_dominant_color(roi):
 while True:
     ret, frame = cap.read()
     if not ret: break
-    frame = cv2.flip(frame, 1)
+    # frame = cv2.flip(frame, 1) # Removed to fix inverted left/right movement
     h, w = frame.shape[:2]
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
