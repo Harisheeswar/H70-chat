@@ -12,9 +12,29 @@ import { ANIMALS_LIST } from './animals';
 import { useARCamera } from './useARCamera';
 import { AnimeFilter, ANIME_STYLES, animeStyleIdFromKey } from './animeFilter';
 
-// AR Mask Image
-const animeMaskImg = new window.Image();
-animeMaskImg.src = '/anime_mask.png';
+// AR Mask Images — 10 distinct illustrated anime face masks (tracked overlays,
+// not a shader on the real face). Original mask kept as 'classic'; 9 more
+// added as original SVG illustrations.
+export const ANIME_MASKS = [
+  { key: 'anime_mask_classic',  name: 'Classic', emoji: '🎭', src: '/anime_mask.png' },
+  { key: 'anime_mask_sakura',   name: 'Sakura', emoji: '🌸', src: '/anime_mask_sakura.svg' },
+  { key: 'anime_mask_frost',    name: 'Frost', emoji: '❄️', src: '/anime_mask_frost.svg' },
+  { key: 'anime_mask_sunshine', name: 'Sunshine', emoji: '☀️', src: '/anime_mask_sunshine.svg' },
+  { key: 'anime_mask_neko',     name: 'Neko Ears', emoji: '🐱', src: '/anime_mask_neko.svg' },
+  { key: 'anime_mask_neko2',    name: 'Neko Whiskers', emoji: '🐾', src: '/anime_mask_neko2.svg' },
+  { key: 'anime_mask_punk',     name: 'Punk', emoji: '🖤', src: '/anime_mask_punk.svg' },
+  { key: 'anime_mask_angel',    name: 'Angel', emoji: '😇', src: '/anime_mask_angel.svg' },
+  { key: 'anime_mask_devil',    name: 'Devil', emoji: '😈', src: '/anime_mask_devil.svg' },
+  { key: 'anime_mask_nerd',     name: 'Nerd', emoji: '🤓', src: '/anime_mask_nerd.svg' },
+  { key: 'anime_mask_idol',     name: 'Idol', emoji: '⭐', src: '/anime_mask_idol.svg' },
+];
+
+const animeMaskImgs = {};
+ANIME_MASKS.forEach(m => {
+  const img = new window.Image();
+  img.src = m.src;
+  animeMaskImgs[m.key] = img;
+});
 
 // Level Tiers Helper
 const getLevelTier = (level) => {
@@ -1865,11 +1885,12 @@ export default function App() {
     ctx.translate(center.x, center.y);
     ctx.rotate(angle);
 
-    if (filterType === 'anime_mask' && animeMaskImg.complete) {
+    const maskImg = animeMaskImgs[filterType];
+    if (maskImg && maskImg.complete && maskImg.naturalWidth > 0) {
       ctx.save();
       const maskWidth = dist * 3.2; // Adjust width based on face
-      const maskHeight = maskWidth * (animeMaskImg.height / animeMaskImg.width);
-      ctx.drawImage(animeMaskImg, -maskWidth / 2, -maskHeight * 0.5, maskWidth, maskHeight);
+      const maskHeight = maskWidth * (maskImg.height / maskImg.width || 1);
+      ctx.drawImage(maskImg, -maskWidth / 2, -maskHeight * 0.5, maskWidth, maskHeight);
       ctx.restore();
     }
     else if (filterType === 'dog') {
@@ -8059,7 +8080,7 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'No AR 🚫', key: 'none' },
-                      { name: 'Anime Mask 🎭', key: 'anime_mask' },
+                      ...ANIME_MASKS.map(m => ({ name: `${m.name} ${m.emoji}`, key: m.key })),
                       ...ANIME_STYLES.map(s => ({ name: `${s.name} ${s.emoji}`, key: s.key })),
                       { name: 'Puppy 🐶', key: 'dog' },
                       { name: 'Kitty 🐱', key: 'cat' },
