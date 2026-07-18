@@ -2259,22 +2259,37 @@ export default function App() {
         webcamTrackerRef.current = tracker;
       }
 
-      // Attach stream after modal mounts
-      setTimeout(() => {
+      // Attach stream once the modal has actually mounted the <video> element.
+      // (Previously used a hardcoded setTimeout(150) which could silently
+      // fail — leaving the camera permanently blank with zero error — if
+      // React hadn't committed the DOM yet on a slower render.)
+      const attachStream = (attemptsLeft = 25) => {
         const video = webcamVideoRef.current;
-        if (video) {
-          video.srcObject = stream;
-          video.onloadedmetadata = () => {
-            video.play();
-            // Start face tracker
-            if (webcamTrackerRef.current) {
-              webcamTrackerRef.current.start(video);
-            }
-            // Start render loop
-            webcamAnimIdRef.current = requestAnimationFrame(renderWebcamCanvas);
-          };
+        if (!video) {
+          if (attemptsLeft <= 0) {
+            console.error('[H70] Webcam video element never mounted.');
+            alert('Could not open the camera preview. Please try again.');
+            setIsWebcamOpen(false);
+            return;
+          }
+          requestAnimationFrame(() => attachStream(attemptsLeft - 1));
+          return;
         }
-      }, 150);
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play().catch((err) => {
+            console.error('[H70] Webcam preview play() failed:', err);
+            alert('Camera preview could not start: ' + err.message);
+          });
+          // Start face tracker
+          if (webcamTrackerRef.current) {
+            webcamTrackerRef.current.start(video);
+          }
+          // Start render loop
+          webcamAnimIdRef.current = requestAnimationFrame(renderWebcamCanvas);
+        };
+      };
+      attachStream();
     } catch (err) {
       console.error('Webcam access error:', err);
       alert('Could not access camera: ' + err.message);
@@ -2298,25 +2313,27 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, width, height);
 
-    // Draw raw video frame onto canvas
+    // Draw video frame and AR overlay under the SAME mirror transform so
+    // filter positions (from the tracker, which reads the raw unmirrored
+    // video) line up with what's actually drawn on screen. Previously the
+    // video was drawn unmirrored while the overlay was drawn mirrored,
+    // so filters rendered offset from the face.
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, width, height);
 
     // Get tracker landmarks and draw AR overlay
     if (webcamTrackerRef.current) {
       const positions = webcamTrackerRef.current.getCurrentPosition();
       if (positions) {
-        ctx.save();
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-
         // We skip drawAROverlay if it's the 3D filter, since WebGL handles it
         if (selectedWebcamARFilterRef.current !== 'anime3d') {
           drawAROverlay(ctx, positions, selectedWebcamARFilterRef.current);
         }
-      
-        ctx.restore();
       }
     }
+    ctx.restore();
 
     webcamAnimIdRef.current = requestAnimationFrame(renderWebcamCanvas);
   };
