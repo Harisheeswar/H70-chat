@@ -10,6 +10,10 @@ import {
 
 import { ANIMALS_LIST } from './animals';
 
+// AR Mask Image
+const animeMaskImg = new Image();
+animeMaskImg.src = '/anime_mask.png';
+
 // Level Tiers Helper
 const getLevelTier = (level) => {
   if (level >= 20) return { name: 'Diamond', class: 'level-diamond badge-neon-blue' };
@@ -1818,7 +1822,14 @@ export default function App() {
     ctx.translate(center.x, center.y);
     ctx.rotate(angle);
 
-    if (filterType === 'dog') {
+    if (filterType === 'anime' && animeMaskImg.complete) {
+      ctx.save();
+      const maskWidth = dist * 3.2; // Adjust width based on face
+      const maskHeight = maskWidth * (animeMaskImg.height / animeMaskImg.width);
+      ctx.drawImage(animeMaskImg, -maskWidth / 2, -maskHeight * 0.5, maskWidth, maskHeight);
+      ctx.restore();
+    }
+    else if (filterType === 'dog') {
       // Floppy Brown Dog Ears
       // Left ear
       ctx.save();
@@ -7975,6 +7986,7 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'No AR 🚫', key: 'none' },
+                      { name: 'Anime 🌸', key: 'anime' },
                       { name: 'Puppy 🐶', key: 'dog' },
                       { name: 'Kitty 🐱', key: 'cat' },
                       { name: 'Bunny 🐰', key: 'bunny' },
