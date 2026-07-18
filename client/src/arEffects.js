@@ -228,91 +228,137 @@ function drawMustache(ctx, lm, w, h) {
   ctx.restore();
 }
 
-function drawAnimeEye(ctx, center, angle, eyeW, eyeH, hue) {
+
+
+// Draws a soft-edged, scaled-up crop of `buffer` at `srcCenter` onto `ctx` at
+// `destCenter`, using a small reusable offscreen canvas (`patch`) so we don't
+// allocate a new canvas every video frame. This is what actually makes eyes
+// look bigger — it's real pixels from the camera, stretched, not a drawing.
+function warpPatch(ctx, buffer, patch, srcCenter, srcSize, destCenter, destSize, angle) {
+  const pctx = patch.ctx;
+  const PS = patch.size;
+  pctx.clearRect(0, 0, PS, PS);
+  pctx.drawImage(
+    buffer,
+    srcCenter.x - srcSize / 2, srcCenter.y - srcSize / 2, srcSize, srcSize,
+    0, 0, PS, PS
+  );
+  // Feather the edges so the enlarged patch blends into the surrounding face
+  // instead of showing a hard circular seam.
+  pctx.globalCompositeOperation = 'destination-in';
+  const grad = pctx.createRadialGradient(PS / 2, PS / 2, PS * 0.30, PS / 2, PS / 2, PS * 0.5);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  pctx.fillStyle = grad;
+  pctx.fillRect(0, 0, PS, PS);
+  pctx.globalCompositeOperation = 'source-over';
+
   ctx.save();
-  ctx.translate(center.x, center.y);
+  ctx.translate(destCenter.x, destCenter.y);
   ctx.rotate(angle);
-
-  // Sclera
-  ctx.fillStyle = '#fbfbff';
-  ctx.strokeStyle = 'rgba(30,20,20,0.7)';
-  ctx.lineWidth = Math.max(1.5, eyeW * 0.03);
-  ctx.beginPath();
-  ctx.ellipse(0, 0, eyeW / 2, eyeH / 2, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  // Iris
-  const irisR = eyeH / 2.15;
-  const gradient = ctx.createRadialGradient(0, 0, irisR * 0.1, 0, 0, irisR);
-  gradient.addColorStop(0, `hsl(${hue}, 75%, 60%)`);
-  gradient.addColorStop(0.65, `hsl(${hue}, 80%, 42%)`);
-  gradient.addColorStop(1, `hsl(${hue}, 60%, 22%)`);
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.ellipse(0, eyeH * 0.03, irisR, irisR, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Pupil
-  ctx.fillStyle = '#100a12';
-  ctx.beginPath();
-  ctx.ellipse(0, eyeH * 0.05, irisR * 0.42, irisR * 0.42, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Glossy catchlights
-  ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.beginPath();
-  ctx.ellipse(-irisR * 0.35, -irisR * 0.4, irisR * 0.24, irisR * 0.3, -0.4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.beginPath();
-  ctx.ellipse(irisR * 0.35, irisR * 0.25, irisR * 0.12, irisR * 0.15, 0.3, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Thick upper lash line + flick
-  ctx.strokeStyle = '#140d10';
-  ctx.lineWidth = Math.max(2, eyeW * 0.06);
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, eyeW / 2, eyeH / 2, 0, Math.PI * 1.08, Math.PI * 1.92);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(eyeW / 2, -eyeH * 0.05);
-  ctx.lineTo(eyeW / 2 + eyeW * 0.18, -eyeH * 0.35);
-  ctx.stroke();
-
+  ctx.drawImage(patch.canvas, 0, 0, PS, PS, -destSize / 2, -destSize / 2, destSize, destSize);
   ctx.restore();
 }
 
-function drawAnime(ctx, lm, w, h) {
-  const outerR = pt(lm, IDX.eyeOuterR, w, h);
-  const innerR = pt(lm, IDX.eyeInnerR, w, h);
-  const outerL = pt(lm, IDX.eyeOuterL, w, h);
-  const innerL = pt(lm, IDX.eyeInnerL, w, h);
-  const topR = pt(lm, IDX.eyeTopR, w, h);
-  const bottomR = pt(lm, IDX.eyeBottomR, w, h);
+function makePatch(size = 220) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  return { canvas, ctx: canvas.getContext('2d'), size };
+}
+
+/**
+ * "Cute" filter, Snapchat-lens style: this warps the person's *actual*
+ * camera pixels rather than drawing cartoon shapes on top.
+ *  - Eyes are cropped from the live frame and redrawn ~40% bigger, feathered
+ *    so they blend into the real face.
+ *  - Skin gets a soft blur pass (masked to the face, eyes/mouth excluded)
+ *    for a smoothed "beauty cam" look.
+ *  - Blush + a light glossy highlight finish the look.
+ */
+function drawCuteWarp(ctx, buffer, skinPatch, eyePatches, lm, w, h) {
+  const forehead = pt(lm, IDX.foreheadTop, w, h);
+  const chin = pt(lm, IDX.chin, w, h);
   const cheekR = pt(lm, IDX.cheekR, w, h);
   const cheekL = pt(lm, IDX.cheekL, w, h);
-  const angle = angleOf(outerR, outerL);
+  const eyeOuterR = pt(lm, IDX.eyeOuterR, w, h);
+  const eyeInnerR = pt(lm, IDX.eyeInnerR, w, h);
+  const eyeOuterL = pt(lm, IDX.eyeOuterL, w, h);
+  const eyeInnerL = pt(lm, IDX.eyeInnerL, w, h);
+  const eyeTopR = pt(lm, IDX.eyeTopR, w, h);
+  const eyeBottomR = pt(lm, IDX.eyeBottomR, w, h);
+  const mouthL = pt(lm, IDX.mouthL, w, h);
+  const mouthR = pt(lm, IDX.mouthR, w, h);
+  const upperLip = pt(lm, IDX.upperLip, w, h);
+  const lowerLip = pt(lm, IDX.lowerLip, w, h);
 
-  const centerR = { x: (outerR.x + innerR.x) / 2, y: (outerR.y + innerR.y) / 2 };
-  const centerL = { x: (outerL.x + innerL.x) / 2, y: (outerL.y + innerL.y) / 2 };
-  const baseW = dist(outerR, innerR);
-  const baseH = dist(topR, bottomR) || baseW * 0.6;
-  const eyeW = baseW * 2.3;
-  const eyeH = Math.max(baseH * 3.2, eyeW * 0.85);
+  const angle = angleOf(eyeOuterR, eyeOuterL);
+  const centerR = { x: (eyeOuterR.x + eyeInnerR.x) / 2, y: (eyeOuterR.y + eyeInnerR.y) / 2 };
+  const centerL = { x: (eyeOuterL.x + eyeInnerL.x) / 2, y: (eyeOuterL.y + eyeInnerL.y) / 2 };
+  const eyeGapW = dist(eyeOuterR, eyeInnerR);
+  const eyeGapH = dist(eyeTopR, eyeBottomR) || eyeGapW * 0.6;
+  const mouthCenter = { x: (mouthL.x + mouthR.x) / 2, y: (upperLip.y + lowerLip.y) / 2 };
+  const mouthW = dist(mouthL, mouthR);
 
-  drawAnimeEye(ctx, centerR, angle, eyeW, eyeH, 262);
-  drawAnimeEye(ctx, centerL, angle, eyeW, eyeH, 262);
+  // --- 1. Skin smoothing, masked to the face and excluding eyes/mouth ---
+  const faceCenter = {
+    x: (forehead.x + chin.x + cheekR.x + cheekL.x) / 4,
+    y: (forehead.y + chin.y) / 2,
+  };
+  const faceRx = (dist(cheekR, cheekL) / 2) * 1.1;
+  const faceRy = (dist(forehead, chin) / 2) * 1.08;
 
-  // Blush
+  skinPatch.ctx.clearRect(0, 0, w, h);
+  skinPatch.ctx.filter = 'blur(7px)';
+  skinPatch.ctx.drawImage(buffer, 0, 0, w, h);
+  skinPatch.ctx.filter = 'none';
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(faceCenter.x, faceCenter.y, faceRx, faceRy, angle, 0, Math.PI * 2);
+  ctx.ellipse(centerR.x, centerR.y, eyeGapW * 1.3, eyeGapH * 2.2, angle, 0, Math.PI * 2);
+  ctx.ellipse(centerL.x, centerL.y, eyeGapW * 1.3, eyeGapH * 2.2, angle, 0, Math.PI * 2);
+  ctx.ellipse(mouthCenter.x, mouthCenter.y, mouthW * 0.55, mouthW * 0.32, angle, 0, Math.PI * 2);
+  ctx.clip('evenodd');
+  ctx.globalAlpha = 0.42;
+  ctx.drawImage(skinPatch.canvas, 0, 0, w, h);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // --- 2. Real-pixel eye enlargement ---
+  const eyeSrcSize = eyeGapW * 2.1;
+  const eyeDestSize = eyeSrcSize * 1.42;
+  warpPatch(ctx, buffer, eyePatches.r, centerR, eyeSrcSize, centerR, eyeDestSize, angle);
+  warpPatch(ctx, buffer, eyePatches.l, centerL, eyeSrcSize, centerL, eyeDestSize, angle);
+
+  // --- 3. Subtle lash definition + glossy catchlight on the (now bigger) eyes ---
+  [centerR, centerL].forEach((center) => {
+    ctx.save();
+    ctx.translate(center.x, center.y);
+    ctx.rotate(angle);
+    const rw = eyeDestSize / 2;
+    const rh = eyeDestSize / 2.7;
+    ctx.strokeStyle = 'rgba(20,10,15,0.55)';
+    ctx.lineWidth = Math.max(1.5, rw * 0.05);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rw, rh, 0, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath();
+    ctx.ellipse(-rw * 0.28, -rh * 0.3, rw * 0.12, rh * 0.16, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // --- 4. Blush ---
   [cheekR, cheekL].forEach((cheek) => {
-    const blushGrad = ctx.createRadialGradient(cheek.x, cheek.y, 0, cheek.x, cheek.y, baseW * 0.9);
-    blushGrad.addColorStop(0, 'rgba(255, 130, 160, 0.55)');
+    const blushGrad = ctx.createRadialGradient(cheek.x, cheek.y, 0, cheek.x, cheek.y, eyeGapW * 1.6);
+    blushGrad.addColorStop(0, 'rgba(255, 130, 160, 0.5)');
     blushGrad.addColorStop(1, 'rgba(255, 130, 160, 0)');
     ctx.fillStyle = blushGrad;
     ctx.beginPath();
-    ctx.ellipse(cheek.x, cheek.y, baseW * 0.9, baseW * 0.7, 0, 0, Math.PI * 2);
+    ctx.ellipse(cheek.x, cheek.y, eyeGapW * 1.6, eyeGapW * 1.25, angle, 0, Math.PI * 2);
     ctx.fill();
   });
 }
@@ -388,6 +434,18 @@ export async function createARSession(rawStream, initialEffect = 'none') {
   canvas.height = height;
   const ctx = canvas.getContext('2d');
 
+  // Reusable offscreen canvases for the warp-based "cute" filter — allocated
+  // once per session so we're not creating canvases every animation frame.
+  const buffer = document.createElement('canvas');
+  buffer.width = width;
+  buffer.height = height;
+  const bufferCtx = buffer.getContext('2d');
+  const skinPatch = { canvas: document.createElement('canvas'), ctx: null };
+  skinPatch.canvas.width = width;
+  skinPatch.canvas.height = height;
+  skinPatch.ctx = skinPatch.canvas.getContext('2d');
+  const eyePatches = { r: makePatch(), l: makePatch() };
+
   let currentEffect = initialEffect;
   let faceLandmarker = null;
   let stopped = false;
@@ -423,14 +481,11 @@ export async function createARSession(rawStream, initialEffect = 'none') {
     rafId = requestAnimationFrame(drawFrame);
     if (video.readyState < 2) return;
 
-    ctx.save();
-    ctx.scale(-1, 1); // mirror, matches how people expect to see themselves
-    if (currentEffect === 'anime') {
-      ctx.filter = 'saturate(1.3) brightness(1.08) contrast(1.05)';
-    }
-    ctx.drawImage(video, -width, 0, width, height);
-    ctx.filter = 'none';
-    ctx.restore();
+    bufferCtx.save();
+    bufferCtx.scale(-1, 1); // mirror, matches how people expect to see themselves
+    bufferCtx.drawImage(video, -width, 0, width, height);
+    bufferCtx.restore();
+    ctx.drawImage(buffer, 0, 0);
 
     if (currentEffect === 'none') return;
 
@@ -454,7 +509,7 @@ export async function createARSession(rawStream, initialEffect = 'none') {
     const t = (performance.now() - startTime) / 1000;
 
     if (mirrored) {
-      if (currentEffect === 'anime') drawAnime(ctx, mirrored, width, height);
+      if (currentEffect === 'anime') drawCuteWarp(ctx, buffer, skinPatch, eyePatches, mirrored, width, height);
       else if (currentEffect === 'glasses') drawGlasses(ctx, mirrored, width, height);
       else if (currentEffect === 'dog') drawDog(ctx, mirrored, width, height);
       else if (currentEffect === 'cat') drawCat(ctx, mirrored, width, height);
