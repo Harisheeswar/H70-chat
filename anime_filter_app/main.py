@@ -13,7 +13,6 @@ def apply_eye_bulge(img, center_x, center_y, radius, scale):
     """
     Distorts pixels outward from a center point to magnify the eyes natively.
     """
-    out_img = img.copy()
     h, w = img.shape[:2]
     
     # Create coordinate grid
@@ -30,20 +29,20 @@ def apply_eye_bulge(img, center_x, center_y, radius, scale):
     mask = distance < radius
     
     if np.any(mask):
+        map_x = x_grid.astype(np.float32)
+        map_y = y_grid.astype(np.float32)
+        
         # Calculate bulge mapping
         dist_fraction = 1.0 - (distance[mask] / radius)
         factor = 1.0 - scale * (dist_fraction ** 2)
         
-        map_x = center_x + dx[mask] * factor
-        map_y = center_y + dy[mask] * factor
+        map_x[mask] = center_x + dx[mask] * factor
+        map_y[mask] = center_y + dy[mask] * factor
         
-        map_x = np.clip(map_x, 0, w - 1).astype(np.float32)
-        map_y = np.clip(map_y, 0, h - 1).astype(np.float32)
+        # Apply remap to the entire image frame cleanly
+        return cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR)
         
-        # Apply remap only to the masked area
-        out_img[mask] = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR)[mask]
-        
-    return out_img
+    return img.copy()
 
 while True:
     ret, frame = cap.read()
