@@ -2017,10 +2017,12 @@ export default function App() {
       ctx.save();
       ctx.translate(rotatedMcX, rotatedMcY - dist * 0.12);
       ctx.beginPath();
+      ctx.moveTo(0, 0);
       // Left curl
       ctx.bezierCurveTo(-dist * 0.15, -dist * 0.05, -dist * 0.4, dist * 0.05, -dist * 0.5, -dist * 0.1);
       ctx.bezierCurveTo(-dist * 0.4, dist * 0.15, -dist * 0.15, dist * 0.02, 0, 0);
       // Right curl
+      ctx.moveTo(0, 0);
       ctx.bezierCurveTo(dist * 0.15, -dist * 0.05, dist * 0.4, dist * 0.05, dist * 0.5, -dist * 0.1);
       ctx.bezierCurveTo(dist * 0.4, dist * 0.15, dist * 0.15, dist * 0.02, 0, 0);
       ctx.fillStyle = '#332211';
@@ -2149,33 +2151,47 @@ export default function App() {
       ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3; ctx.stroke();
     }
     else if (filterType === 'devil') {
-      // Devil horns
+      // Devil horns — sharp red triangles above temples
       const drawHorn = (side) => {
         ctx.save(); ctx.translate(side * dist * 0.45, -dist * 0.85);
         ctx.beginPath();
-        ctx.moveTo(-dist * 0.15, 0); ctx.lineTo(0, -dist * 0.5); ctx.lineTo(dist * 0.15, 0);
-        ctx.closePath(); ctx.fillStyle = '#dc2626'; ctx.fill();
+        ctx.moveTo(-dist * 0.15, 0); ctx.lineTo(0, -dist * 0.55); ctx.lineTo(dist * 0.15, 0);
+        ctx.closePath();
+        ctx.fillStyle = '#dc2626'; ctx.fill();
+        // Inner highlight
+        ctx.beginPath();
+        ctx.moveTo(-dist * 0.07, 0); ctx.lineTo(0, -dist * 0.38); ctx.lineTo(dist * 0.07, 0);
+        ctx.closePath();
+        ctx.fillStyle = '#ef4444'; ctx.fill();
         ctx.restore();
       };
       drawHorn(-1); drawHorn(1);
-      // Devil tail hint at chin
-      const chinX = positions[7][0] - center.x, chinY = positions[7][1] - center.y;
-      const cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+      // Red glow around eyes
+      const leX = positions[27][0] - center.x, leY = positions[27][1] - center.y;
+      const reX = positions[32][0] - center.x, reY = positions[32][1] - center.y;
+      const cosA2 = Math.cos(-angle), sinA2 = Math.sin(-angle);
+      const rotLE2 = { x: leX * cosA2 - leY * sinA2, y: leX * sinA2 + leY * cosA2 };
+      const rotRE2 = { x: reX * cosA2 - reY * sinA2, y: reX * sinA2 + reY * cosA2 };
+      [rotLE2, rotRE2].forEach(eye => {
+        ctx.save(); ctx.translate(eye.x, eye.y);
+        ctx.beginPath(); ctx.ellipse(0, 0, dist * 0.2, dist * 0.14, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(220,38,38,0.25)'; ctx.fill();
+        ctx.restore();
+      });
     }
     else if (filterType === 'halo') {
       // Glowing gold halo ring above head
       ctx.save(); ctx.translate(0, -dist * 1.05);
-      const grad = ctx.createRadialGradient(0, 0, dist * 0.35, 0, 0, dist * 0.6);
-      grad.addColorStop(0, 'rgba(255,215,0,0.0)');
-      grad.addColorStop(0.6, 'rgba(255,215,0,0.8)');
-      grad.addColorStop(0.8, 'rgba(255,215,0,0.4)');
-      grad.addColorStop(1, 'rgba(255,215,0,0.0)');
+      // Outer glow
       ctx.beginPath(); ctx.arc(0, 0, dist * 0.55, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,215,0,0.9)'; ctx.lineWidth = dist * 0.12; ctx.stroke();
-      // Glow
+      ctx.strokeStyle = 'rgba(255,255,200,0.3)'; ctx.lineWidth = dist * 0.24; ctx.stroke();
+      // Main ring
       ctx.beginPath(); ctx.arc(0, 0, dist * 0.55, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,200,0.4)'; ctx.lineWidth = dist * 0.22; ctx.stroke();
-      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,215,0,0.95)'; ctx.lineWidth = dist * 0.1; ctx.stroke();
+      // Inner shine
+      ctx.beginPath(); ctx.arc(0, 0, dist * 0.55, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = dist * 0.03; ctx.stroke();
+      ctx.restore(); // ← was missing, caused canvas state leak
     }
 
     ctx.restore();
