@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { FaceMesh } from '@mediapipe/face_mesh';
-import { Camera } from '@mediapipe/camera_utils';
 
 export function useARCamera(videoRef, canvasRef, activeFilter) {
   const [isReady, setIsReady] = useState(false);
@@ -85,7 +83,7 @@ export function useARCamera(videoRef, canvasRef, activeFilter) {
     maskObjectRef.current = maskGroup;
 
     // 2. Setup MediaPipe Face Mesh
-    const faceMesh = new FaceMesh({
+    const faceMesh = new window.FaceMesh({
       locateFile: (file) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
       }
@@ -154,7 +152,7 @@ export function useARCamera(videoRef, canvasRef, activeFilter) {
     faceMeshRef.current = faceMesh;
 
     // 3. Setup Camera stream to feed into Face Mesh
-    const mpCamera = new Camera(video, {
+    const mpCamera = new window.Camera(video, {
       onFrame: async () => {
         if (faceMeshRef.current) {
           await faceMeshRef.current.send({ image: video });
