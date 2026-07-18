@@ -59,36 +59,36 @@ while True:
 
     for (x, y, w_face, h_face) in faces:
         roi_gray = gray[y:y+h_face, x:x+w_face]
-        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 8, minSize=(30, 30))
+        # Lowered minNeighbors and minSize so it detects eyes much more easily
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5, minSize=(20, 20))
         
         # --- STEP 1: SNAPCHAT DOLL EYES (PIXEL BULGE) ---
-        # Instead of drawing fake circles, we magnify your actual eyes
         for (ex, ey, ew, eh) in eyes[:2]:
             center_x = x + ex + (ew // 2)
             center_y = y + ey + (eh // 2)
             
-            # Bulge radius based on detected eye width
-            eye_radius = int(ew * 0.9)
+            eye_radius = int(ew * 0.95)
             
-            # Magnify the real eye pixels (Scale 0.45 stretches them smoothly)
-            output_frame = apply_eye_bulge(output_frame, center_x, center_y, eye_radius, 0.45)
+            # Increased scale from 0.45 to 0.75 to make the eye magnification HUGE and obvious
+            output_frame = apply_eye_bulge(output_frame, center_x, center_y, eye_radius, 0.75)
 
     # --- STEP 2: DOLL SKIN SMOOTHING (GLAMOUR FILTER) ---
-    # We downscale by 50% before blurring to keep performance lightning fast (60fps)
     h, w = output_frame.shape[:2]
     small_frame = cv2.resize(output_frame, (w // 2, h // 2))
     
-    # Bilateral filter removes pores/blemishes but keeps edges (eyes, mouth) totally sharp
-    smoothed_small = cv2.bilateralFilter(small_frame, d=9, sigmaColor=40, sigmaSpace=40)
+    # Increased sigma values to make the skin smoothing very strong (airbrushed look)
+    smoothed_small = cv2.bilateralFilter(small_frame, d=9, sigmaColor=90, sigmaSpace=90)
     smoothed_frame = cv2.resize(smoothed_small, (w, h), interpolation=cv2.INTER_LINEAR)
     
     # --- STEP 3: COLOR POP & WARMTH (DOLL BLUSH EFFECT) ---
-    # Convert to HSV to gently boost saturation (color) and brightness
     hsv = cv2.cvtColor(smoothed_frame, cv2.COLOR_BGR2HSV).astype(np.float32)
-    hsv[:, :, 1] *= 1.2  # Boost color saturation by 20%
-    hsv[:, :, 2] *= 1.05 # Boost brightness slightly
+    hsv[:, :, 1] *= 1.4  # Boost color saturation by 40% (very vibrant)
+    hsv[:, :, 2] *= 1.1  # Boost brightness by 10%
     hsv = np.clip(hsv, 0, 255).astype(np.uint8)
     final_frame = cv2.cvtColor(hsv, cv2.HSV_BGR)
+
+    # Add a visual indicator to the screen so you know the filter is running!
+    cv2.putText(final_frame, "DOLL EFFECT: ON", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3, cv2.LINE_AA)
 
     # Render output
     cv2.imshow('Snapchat Doll Style Lens', final_frame)
