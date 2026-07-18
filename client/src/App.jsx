@@ -237,7 +237,7 @@ export default function App() {
   // rebuild the whole WebGL context on every single style switch, which is
   // exactly the slow/flickery behavior we don't want with 6 styles to flip
   // between.
-  const isAnimeFilter = selectedWebcamARFilter.startsWith('anime_');
+  const isAnimeFilter = ANIME_STYLES.some(s => s.key === selectedWebcamARFilter);
 
   useEffect(() => {
     if (isAnimeFilter && isWebcamOpen) {
@@ -1865,7 +1865,7 @@ export default function App() {
     ctx.translate(center.x, center.y);
     ctx.rotate(angle);
 
-    if (filterType === 'anime' && animeMaskImg.complete) {
+    if (filterType === 'anime_mask' && animeMaskImg.complete) {
       ctx.save();
       const maskWidth = dist * 3.2; // Adjust width based on face
       const maskHeight = maskWidth * (animeMaskImg.height / animeMaskImg.width);
@@ -8059,6 +8059,7 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.4rem', width: '100%' }}>
                     {[
                       { name: 'No AR 🚫', key: 'none' },
+                      { name: 'Anime Mask 🎭', key: 'anime_mask' },
                       ...ANIME_STYLES.map(s => ({ name: `${s.name} ${s.emoji}`, key: s.key })),
                       { name: 'Puppy 🐶', key: 'dog' },
                       { name: 'Kitty 🐱', key: 'cat' },
