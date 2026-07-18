@@ -7952,7 +7952,9 @@ export default function App() {
                       autoPlay
                       playsInline
                       muted
-                      style={{ display: 'none' }}
+                      width={640}
+                      height={480}
+                      style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: '100%', height: '100%', zIndex: -1 }}
                     />
                     <canvas
                       ref={webcamCanvasRef}
