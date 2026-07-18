@@ -84,7 +84,7 @@ while True:
     hsv[:, :, 1] *= 1.4  # Boost color saturation by 40% (very vibrant)
     hsv[:, :, 2] *= 1.1  # Boost brightness by 10%
     hsv = np.clip(hsv, 0, 255).astype(np.uint8)
-    final_frame = cv2.cvtColor(hsv, cv2.HSV_BGR)
+    final_frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
     # Add a visual indicator to the screen so you know the filter is running!
     cv2.putText(final_frame, "DOLL EFFECT: ON", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3, cv2.LINE_AA)
