@@ -1,5 +1,8 @@
+from flask import Flask, render_template, Response, jsonify
 import cv2
 import numpy as np
+import threading
+import time
 
 try:
     import onnxruntime as ort
@@ -7,17 +10,19 @@ try:
 except ImportError:
     has_ort = False
 
-# Load local trackers from your assets folder
+app = Flask(__name__)
+
+# Global variables for the camera and current lens
+cap = None
+current_lens = 1  # Start with Doll Lens
+output_frame = None
+lock = threading.Lock()
+
+# Load trackers
 face_cascade = cv2.CascadeClassifier('assets/haarcascade_frontalface_default.xml')
 eye_cascade = cv2.CascadeClassifier('assets/haarcascade_eye.xml')
 
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) # Use DirectShow for better Windows hardware access
-cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')) # High clarity format
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920) # 1080p HD clarity
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-cap.set(cv2.CAP_PROP_FPS, 90) # Request 90 FPS (will default to 60fps if 90 isn't supported by hardware)
-
-# Load the Generative AI ONNX Model safely using onnxruntime
+# Load the AI model
 anime_session = None
 if has_ort:
     try:
@@ -25,157 +30,167 @@ if has_ort:
     except Exception as e:
         print(f"Warning: Could not load animegan.onnx model: {e}")
 
-# 0: No Filter, 1: Doll Lens, 2: Generative AI Anime
-# Starting on 1 so it doesn't instantly crash if Mode 2 is loading
-current_lens = 1
-
 def apply_eye_bulge(img, center_x, center_y, radius, scale):
     h, w = img.shape[:2]
-    xs = np.arange(w)
-    ys = np.arange(h)
-    x_grid, y_grid = np.meshgrid(xs, ys)
-    dx = x_grid - center_x
-    dy = y_grid - center_y
-    distance = np.sqrt(dx**2 + dy**2)
+    out_img = img.copy()
+
+    # Get bounding box of the eye area
+    x1, y1 = max(0, center_x - radius), max(0, center_y - radius)
+    x2, y2 = min(w, center_x + radius), min(h, center_y + radius)
+
+    # Create grid for the bulge effect
+    Y, X = np.ogrid[y1:y2, x1:x2]
+    Y = Y - center_y
+    X = X - center_x
+
+    distance = np.sqrt(X**2 + Y**2)
+    
+    # Calculate bulging distortion mask
     mask = distance < radius
-    if np.any(mask):
-        map_x = x_grid.astype(np.float32)
-        map_y = y_grid.astype(np.float32)
-        dist_fraction = 1.0 - (distance[mask] / radius)
-        factor = 1.0 - scale * (dist_fraction ** 2)
-        map_x[mask] = center_x + dx[mask] * factor
-        map_y[mask] = center_y + dy[mask] * factor
-        return cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR)
-    return img.copy()
-
-def get_dominant_color(roi):
-    if roi.size == 0:
-        return (0, 0, 0)
-    avg_color = cv2.mean(roi)[:3]
-    return (int(avg_color[0]), int(avg_color[1]), int(avg_color[2]))
-
-while True:
-    ret, frame = cap.read()
-    if not ret: break
     
-    frame = cv2.flip(frame, 1)
+    if not np.any(mask):
+        return out_img
+        
+    distortion = (distance / radius) ** scale
+    
+    map_x = X * distortion + center_x
+    map_y = Y * distortion + center_y
+
+    map_x = map_x.astype(np.float32)
+    map_y = map_y.astype(np.float32)
+    
+    # Apply remapping only to the masked area
+    warped_roi = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR)
+    out_img[y1:y2, x1:x2][mask] = warped_roi[y1:y2, x1:x2][mask]
+
+    return out_img
+
+def process_frame(frame):
+    global current_lens
+    
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.2, 5, minSize=(100, 100))
-    
-    output_frame = frame.copy()
-    
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(100, 100))
+
+    final_frame = frame.copy()
+
     if current_lens == 0:
-        # NO FILTER
-        final_frame = output_frame
-        cv2.putText(final_frame, "NO FILTER (Press 1 or 2 to change)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+        pass # No filter
         
     elif current_lens == 1:
-        # SNAPCHAT DOLL LENS
-        for (x, y, w_face, h_face) in faces:
-            roi_gray = gray[y:y+h_face, x:x+w_face]
+        # DOLL EFFECT
+        for (x, y, w, h) in faces:
+            roi_gray = gray[y:y+h, x:x+w]
             eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5, minSize=(20, 20))
-            for (ex, ey, ew, eh) in eyes[:2]:
-                center_x = x + ex + (ew // 2)
-                center_y = y + ey + (eh // 2)
-                eye_radius = int(ew * 0.95)
-                output_frame = apply_eye_bulge(output_frame, center_x, center_y, eye_radius, 0.75)
 
-        h, w = output_frame.shape[:2]
-        small_frame = cv2.resize(output_frame, (w // 2, h // 2))
-        smoothed_small = cv2.bilateralFilter(small_frame, d=9, sigmaColor=90, sigmaSpace=90)
-        smoothed_frame = cv2.resize(smoothed_small, (w, h), interpolation=cv2.INTER_LINEAR)
-        
-        hsv = cv2.cvtColor(smoothed_frame, cv2.COLOR_BGR2HSV).astype(np.float32)
-        hsv[:, :, 1] *= 1.4
-        hsv[:, :, 2] *= 1.1
+            if len(eyes) >= 2:
+                # Sort eyes left to right
+                eyes = sorted(eyes, key=lambda e: e[0])
+                for (ex, ey, ew, eh) in eyes[:2]:
+                    center_x = x + ex + ew // 2
+                    center_y = y + ey + eh // 2
+                    eye_radius = int(max(ew, eh) * 0.7)
+                    
+                    final_frame = apply_eye_bulge(final_frame, center_x, center_y, eye_radius, 0.75)
+
+        hsv = cv2.cvtColor(final_frame, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[:, :, 1] = hsv[:, :, 1] * 1.3
         hsv = np.clip(hsv, 0, 255).astype(np.uint8)
         final_frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        
-        cv2.putText(final_frame, "DOLL EFFECT (Press 2 for AI Lens)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
 
     elif current_lens == 2:
-        # TRUE GENERATIVE AI ANIME (AnimeGANv2) - FACE ONLY
+        # TRUE GENERATIVE AI ANIME (Full Frame for better quality)
         if anime_session is not None:
             try:
-                final_frame = output_frame.copy()
+                h_orig, w_orig = frame.shape[:2]
                 
-                for (x, y, w_face, h_face) in faces:
-                    # Add some padding around the face so it captures the hair/chin naturally
-                    pad_y = int(h_face * 0.2)
-                    pad_x = int(w_face * 0.2)
-                    
-                    y1 = max(0, y - pad_y)
-                    y2 = min(frame.shape[0], y + h_face + pad_y)
-                    x1 = max(0, x - pad_x)
-                    x2 = min(frame.shape[1], x + w_face + pad_x)
-                    
-                    face_roi = frame[y1:y2, x1:x2]
-                    h_roi, w_roi = face_roi.shape[:2]
-                    
-                    if h_roi == 0 or w_roi == 0: continue
-                    
-                    # The AI model processes at 256x256 for speed
-                    input_size = 256
-                    small_frame = cv2.resize(face_roi, (input_size, input_size))
-                    small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                    
-                    x_input = (small_frame.astype(np.float32) / 127.5) - 1.0
-                    
-                    # Check if the model expects NCHW or NHWC by checking the input shape
-                    expected_shape = anime_session.get_inputs()[0].shape
-                    if expected_shape[1] == 3 or expected_shape[1] == '3':
-                        # NCHW (1, 3, H, W)
-                        x_input = np.transpose(x_input, (2, 0, 1))
-                        x_input = np.expand_dims(x_input, axis=0)
-                    else:
-                        # NHWC (1, H, W, 3)
-                        x_input = np.expand_dims(x_input, axis=0)
-                    
-                    input_name = anime_session.get_inputs()[0].name
-                    out = anime_session.run(None, {input_name: x_input})[0]
-                    
-                    out = out.squeeze() # (3, H, W) or (H, W, 3)
-                    if out.shape[0] == 3:
-                        out = np.transpose(out, (1, 2, 0)) # Convert to (H, W, 3)
-                        
-                    out = (out + 1.0) * 127.5
-                    out = np.clip(out, 0, 255).astype(np.uint8)
-                    out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
-                    
-                    # Resize the AI output back to the face dimensions
-                    anime_face = cv2.resize(out, (w_roi, h_roi), interpolation=cv2.INTER_LINEAR)
-                    
-                    # Blend the clear anime face back onto the normal background seamlessly
-                    mask = np.zeros((h_roi, w_roi, 3), dtype=np.uint8)
-                    cv2.ellipse(mask, (w_roi // 2, int(h_roi * 0.45)), (int(w_roi * 0.45), int(h_roi * 0.55)), 0, 0, 360, (255, 255, 255), -1)
-                    mask = cv2.GaussianBlur(mask, (31, 31), 0)
-                    mask_float = mask.astype(np.float32) / 255.0
-                    
-                    face_roi_float = face_roi.astype(np.float32)
-                    anime_face_float = anime_face.astype(np.float32)
-                    
-                    blended_face = (anime_face_float * mask_float) + (face_roi_float * (1.0 - mask_float))
-                    final_frame[y1:y2, x1:x2] = blended_face.astype(np.uint8)
+                # The AI model processes at 384x384 for a wider, more professional look
+                input_size = 384
+                small_frame = cv2.resize(frame, (input_size, input_size))
+                small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
                 
-                cv2.putText(final_frame, "GENERATIVE AI LENS (Press 0 to Clear)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2, cv2.LINE_AA)
+                x_input = (small_frame.astype(np.float32) / 127.5) - 1.0
+                
+                expected_shape = anime_session.get_inputs()[0].shape
+                if expected_shape[1] == 3 or expected_shape[1] == '3':
+                    x_input = np.transpose(x_input, (2, 0, 1))
+                    x_input = np.expand_dims(x_input, axis=0)
+                else:
+                    x_input = np.expand_dims(x_input, axis=0)
+                
+                input_name = anime_session.get_inputs()[0].name
+                out = anime_session.run(None, {input_name: x_input})[0]
+                
+                out = out.squeeze()
+                if out.shape[0] == 3:
+                    out = np.transpose(out, (1, 2, 0))
+                    
+                out = (out + 1.0) * 127.5
+                out = np.clip(out, 0, 255).astype(np.uint8)
+                out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
+                
+                final_frame = cv2.resize(out, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR)
             except Exception as e:
-                final_frame = frame.copy()
                 cv2.putText(final_frame, f"AI ERROR: {str(e)}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
         else:
-            final_frame = frame.copy()
-            cv2.putText(final_frame, "AI MODULE STILL LOADING...", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.putText(final_frame, "AI MODULE LOADING...", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
 
-    cv2.imshow('Multi-Lens AR App', final_frame)
+    return final_frame
+
+def camera_thread():
+    global cap, output_frame, lock
+    cap = cv2.VideoCapture(0)
     
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('q'):
-        break
-    elif key == ord('0'):
-        current_lens = 0
-    elif key == ord('1'):
-        current_lens = 1
-    elif key == ord('2'):
-        current_lens = 2
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+            
+        processed = process_frame(frame)
+        
+        # Add slight mirror effect for natural camera feel
+        processed = cv2.flip(processed, 1)
 
-cap.release()
-cv2.destroyAllWindows()
+        with lock:
+            output_frame = processed.copy()
+
+def generate_video():
+    global output_frame, lock
+    
+    while True:
+        with lock:
+            if output_frame is None:
+                continue
+            
+            # Encode frame to JPEG
+            ret, encodedImage = cv2.imencode(".jpg", output_frame)
+            if not ret:
+                continue
+
+        # Yield frame in multipart format
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + bytearray(encodedImage) + b'\r\n')
+        # Add a tiny sleep to prevent hogging the CPU when the stream is very fast
+        time.sleep(0.01)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_video(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/set_lens/<int:lens_id>', methods=['POST'])
+def set_lens(lens_id):
+    global current_lens
+    current_lens = lens_id
+    return jsonify({"status": "success", "lens": current_lens})
+
+if __name__ == '__main__':
+    # Start the background camera thread
+    t = threading.Thread(target=camera_thread)
+    t.daemon = True
+    t.start()
+    
+    # Run Flask server
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
