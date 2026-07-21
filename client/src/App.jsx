@@ -691,11 +691,13 @@ export default function App() {
 
   const getFriendshipState = (targetUser) => {
     if (!user || !targetUser) return 'none';
-    const addedThem = user.friends?.includes(targetUser.id);
-    const addedMe = targetUser.friends?.includes(user.id);
-    if (addedThem && addedMe) return 'friends';
-    if (addedThem) return 'sent';
-    if (addedMe) return 'received';
+    const isFriends = user.friends?.includes(targetUser.id) && targetUser.friends?.includes(user.id);
+    if (isFriends) return 'friends';
+    const iReceived = user.friendRequests?.includes(targetUser.id);
+    if (iReceived) return 'received'; // they sent me a request
+    const iSent = user.sentRequests?.includes(targetUser.id) || 
+                  (user.friends?.includes(targetUser.id) && !targetUser.friends?.includes(user.id));
+    if (iSent) return 'sent'; // I sent them a request
     return 'none';
   };
 
@@ -708,22 +710,34 @@ export default function App() {
         body: JSON.stringify({ friendId })
       });
       const updated = await res.json();
-      if (res.ok) setUser(updated);
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
     } catch (err) { console.error(err); }
   };
 
   const handleAcceptFriend = async (friendId) => {
-    // Accepting = also calling friends/add on our side (mutual add = friends)
-    await handleSendFriendRequest(friendId);
-    // Refresh registered users so the badge updates
-    fetchAllUsers();
+    if (!friendId || !token) return;
+    try {
+      const res = await fetch('/api/friends/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ friendId })
+      });
+      const updated = await res.json();
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
+    } catch (err) { console.error(err); }
   };
 
   const handleDeclineFriend = async (friendId) => {
-    // Declining = no action needed on our side, just refresh UI
-    // (the other person already added us; we just don't add back)
-    // Optionally could block or just ignore — for now just refresh
-    fetchAllUsers();
+    if (!friendId || !token) return;
+    try {
+      const res = await fetch('/api/friends/decline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ friendId })
+      });
+      const updated = await res.json();
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
+    } catch (err) { console.error(err); }
   };
 
   const handleRemoveFriend = async (friendId) => {
@@ -735,7 +749,7 @@ export default function App() {
         body: JSON.stringify({ friendId })
       });
       const updated = await res.json();
-      if (res.ok) setUser(updated);
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
     } catch (err) { console.error(err); }
   };
 
@@ -748,7 +762,7 @@ export default function App() {
         body: JSON.stringify({ blockId })
       });
       const updated = await res.json();
-      if (res.ok) setUser(updated);
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
     } catch (err) { console.error(err); }
   };
 
@@ -1057,6 +1071,27 @@ export default function App() {
 
     socket.on('message-reaction-updated', ({ messageId, reactions }) => {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
+    });
+
+    // Real-time friend request notifications
+    socket.on('friend-request-received', ({ from }) => {
+      setUser(prev => {
+        if (!prev) return prev;
+        const reqs = prev.friendRequests || [];
+        if (reqs.includes(from.id)) return prev;
+        return { ...prev, friendRequests: [...reqs, from.id] };
+      });
+      fetchAllUsers();
+    });
+
+    socket.on('friend-accepted', ({ by, user: updatedUser }) => {
+      setUser(prev => {
+        if (!prev) return prev;
+        const friends = prev.friends || [];
+        if (friends.includes(by)) return prev;
+        return { ...prev, friends: [...friends, by] };
+      });
+      fetchAllUsers();
     });
 
     // Level & XP update events
@@ -4073,7 +4108,7 @@ export default function App() {
                       onClick={() => setPeopleTab('requests')}
                       style={{ background: 'transparent', border: 'none', fontSize: '0.78rem', fontWeight: peopleTab === 'requests' ? 800 : 500, color: peopleTab === 'requests' ? '#3b82f6' : 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px' }}
                     >
-                      FRIEND REQUESTS [{(registeredUsers.length ? registeredUsers : onlineUsers).filter(u => user?.friendRequests?.includes(u.id)).length || user?.friendRequests?.length || 0}]
+                      FRIEND REQUESTS [{user?.friendRequests?.length || 0}]
                     </button>
                     <button 
                       onClick={() => setPeopleTab('blocked')}
@@ -4202,9 +4237,10 @@ export default function App() {
                           )}
                           {results.map(u => {
                             const isOnline = onlineUsers.some(o => o.id === u.id);
-                            const isFriend = user?.friends?.includes(u.id) && u.friends?.includes(user?.id);
-                            const hasSent = user?.friends?.includes(u.id) && !isFriend;
-                            const hasReceived = !user?.friends?.includes(u.id) && u.friends?.includes(user?.id);
+                            const state = getFriendshipState(u);
+                            const isFriend = state === 'friends';
+                            const hasSent = state === 'sent';
+                            const hasReceived = state === 'received';
                             return (
                               <div
                                 key={u.id}

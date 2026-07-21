@@ -353,58 +353,134 @@ app.get('/api/supervisor/audit', authenticateToken, (req, res) => {
 });
 
 // 11. Friends: Add Friend
-app.post('/api/friends/add', authenticateToken, (req, res) => {
+app.post('/api/friends/add', authenticateToken, async (req, res) => {
   const { friendId } = req.body;
   if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
   
-  const target = db.getUserById(friendId);
+  const target = await db.getUserById(friendId);
   if (!target) return res.status(404).json({ error: 'User not found' });
   
-  const user = db.getUserById(req.user.id);
+  const user = await db.getUserById(req.user.id);
   const friends = user.friends ? [...user.friends] : [];
-  if (!friends.includes(friendId)) {
-    friends.push(friendId);
-    const updated = db.updateUser(req.user.id, { friends });
-    
-    // Refresh active socket caches
-    for (const [socketId, activeUser] of activeSockets.entries()) {
-      if (activeUser.id === req.user.id) {
-        activeUser.friends = friends;
-      }
-    }
-    
-    sendOnlineUsersList();
-    const { password, ...userWithoutPassword } = updated;
-    return res.json(userWithoutPassword);
+
+  // Already friends
+  if (friends.includes(friendId)) {
+    const { password, ...safe } = user;
+    return res.json(safe);
   }
-  const { password, ...userWithoutPassword } = user;
-  res.json(userWithoutPassword);
+
+  // Check if target already sent us a request (mutual = instant friends)
+  const targetFriendRequests = target.friendRequests || [];
+  const theyRequestedUs = targetFriendRequests.includes(req.user.id);
+
+  if (theyRequestedUs) {
+    // Accept: add each other as friends, remove the pending request
+    friends.push(friendId);
+    const updatedUser = await db.updateUser(req.user.id, { friends });
+
+    const targetFriends = target.friends ? [...target.friends] : [];
+    if (!targetFriends.includes(req.user.id)) targetFriends.push(req.user.id);
+    const newTargetRequests = targetFriendRequests.filter(id => id !== req.user.id);
+    await db.updateUser(friendId, { friends: targetFriends, friendRequests: newTargetRequests });
+
+    // Notify target via socket
+    const targetSocketId = activeUsers.get(friendId);
+    if (targetSocketId) {
+      const { password: _, ...safeTarget } = await db.getUserById(friendId);
+      io.to(targetSocketId).emit('friend-accepted', { by: req.user.id, user: safeTarget });
+    }
+
+    sendOnlineUsersList();
+    const { password, ...safe } = updatedUser;
+    return res.json(safe);
+  }
+
+  // Send friend request to target
+  const targetRequests = target.friendRequests ? [...target.friendRequests] : [];
+  if (!targetRequests.includes(req.user.id)) {
+    targetRequests.push(req.user.id);
+    await db.updateUser(friendId, { friendRequests: targetRequests });
+
+    // Notify target via socket
+    const targetSocketId = activeUsers.get(friendId);
+    if (targetSocketId) {
+      const { password: _, ...safeUser } = user;
+      io.to(targetSocketId).emit('friend-request-received', { from: safeUser });
+    }
+  }
+
+  // Also track outgoing requests on sender so UI can show "Sent"
+  const sentRequests = user.sentRequests ? [...user.sentRequests] : [];
+  if (!sentRequests.includes(friendId)) sentRequests.push(friendId);
+  const updatedUser = await db.updateUser(req.user.id, { sentRequests });
+
+  const { password, ...safe } = updatedUser;
+  res.json(safe);
 });
 
-// 12. Friends: Remove Friend
-app.post('/api/friends/remove', authenticateToken, (req, res) => {
+// Accept friend request
+app.post('/api/friends/accept', authenticateToken, async (req, res) => {
+  const { friendId } = req.body;
+  if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
+
+  const user = await db.getUserById(req.user.id);
+  const target = await db.getUserById(friendId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  // Add to each other's friends list
+  const myFriends = user.friends ? [...user.friends] : [];
+  if (!myFriends.includes(friendId)) myFriends.push(friendId);
+  const myRequests = (user.friendRequests || []).filter(id => id !== friendId);
+  const updatedUser = await db.updateUser(req.user.id, { friends: myFriends, friendRequests: myRequests });
+
+  const theirFriends = target.friends ? [...target.friends] : [];
+  if (!theirFriends.includes(req.user.id)) theirFriends.push(req.user.id);
+  const theirSentRequests = (target.sentRequests || []).filter(id => id !== req.user.id);
+  await db.updateUser(friendId, { friends: theirFriends, sentRequests: theirSentRequests });
+
+  // Notify via socket
+  const targetSocketId = activeUsers.get(friendId);
+  if (targetSocketId) {
+    const { password: _, ...safeUser } = updatedUser;
+    io.to(targetSocketId).emit('friend-accepted', { by: req.user.id, user: safeUser });
+  }
+
+  sendOnlineUsersList();
+  const { password, ...safe } = updatedUser;
+  res.json(safe);
+});
+
+// Decline friend request
+app.post('/api/friends/decline', authenticateToken, async (req, res) => {
+  const { friendId } = req.body;
+  if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
+
+  const user = await db.getUserById(req.user.id);
+  const myRequests = (user.friendRequests || []).filter(id => id !== friendId);
+  const updatedUser = await db.updateUser(req.user.id, { friendRequests: myRequests });
+
+  // Also clear sentRequest on their side
+  const target = await db.getUserById(friendId);
+  if (target) {
+    const theirSent = (target.sentRequests || []).filter(id => id !== req.user.id);
+    await db.updateUser(friendId, { sentRequests: theirSent });
+  }
+
+  const { password, ...safe } = updatedUser;
+  res.json(safe);
+});
+
+app.post('/api/friends/remove', authenticateToken, async (req, res) => {
   const { friendId } = req.body;
   if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
   
-  const user = db.getUserById(req.user.id);
-  let friends = user.friends ? [...user.friends] : [];
-  if (friends.includes(friendId)) {
-    friends = friends.filter(id => id !== friendId);
-    const updated = db.updateUser(req.user.id, { friends });
-    
-    // Refresh active socket caches
-    for (const [socketId, activeUser] of activeSockets.entries()) {
-      if (activeUser.id === req.user.id) {
-        activeUser.friends = friends;
-      }
-    }
-    
-    sendOnlineUsersList();
-    const { password, ...userWithoutPassword } = updated;
-    return res.json(userWithoutPassword);
-  }
-  const { password, ...userWithoutPassword } = user;
-  res.json(userWithoutPassword);
+  const user = await db.getUserById(req.user.id);
+  let friends = (user.friends || []).filter(id => id !== friendId);
+  const updated = await db.updateUser(req.user.id, { friends });
+  
+  sendOnlineUsersList();
+  const { password, ...safe } = updated;
+  res.json(safe);
 });
 
 // 13. Blocks: Toggle Block User
