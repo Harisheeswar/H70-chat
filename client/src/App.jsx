@@ -658,7 +658,7 @@ export default function App() {
       const res = await fetch('/api/users');
       const data = await res.json();
       if (res.ok) {
-        setRegisteredUsers(data);
+        setRegisteredUsers(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error('Error fetching registered users:', err);
@@ -846,9 +846,9 @@ export default function App() {
       } else {
         setUser(prev => ({ ...prev, ...identUser }));
       }
-      setRooms(activeRooms);
+      setRooms(Array.isArray(activeRooms) ? activeRooms : []);
       setUnreadCounts(initialCounts || {});
-      if (initialDmContacts) setDmContacts(initialDmContacts);
+      setDmContacts(Array.isArray(initialDmContacts) ? initialDmContacts : []);
 
       // Land on active channels list on start
       setCurrentNav('chat');
@@ -858,11 +858,11 @@ export default function App() {
 
     // DM contacts list (users with chat history)
     socket.on('dm-contacts', (contacts) => {
-      setDmContacts(contacts || []);
+      setDmContacts(Array.isArray(contacts) ? contacts : []);
     });
 
     socket.on('online-users', (users) => {
-      setOnlineUsers(users);
+      setOnlineUsers(Array.isArray(users) ? users : []);
     });
 
     socket.on('new-room-created', (room) => {
@@ -870,7 +870,7 @@ export default function App() {
     });
 
     socket.on('rooms-updated', (updatedRooms) => {
-      setRooms(updatedRooms);
+      setRooms(Array.isArray(updatedRooms) ? updatedRooms : []);
       setCurrentChat(prev => {
         if (prev && prev.type === 'room') {
           const updated = updatedRooms.find(r => r.id === prev.id);
