@@ -307,6 +307,8 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const localAudioRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const peerConnectionRef = useRef(null);
 
   const [callDuration, setCallDuration] = useState(0);
@@ -2924,14 +2926,22 @@ export default function App() {
       });
 
       const peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.stunprotocol.org:3478' }
+        ],
+        iceCandidatePoolSize: 10
       });
       peerConnectionRef.current = peerConnection;
 
       stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
       peerConnection.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
       };
 
       peerConnection.onicecandidate = (event) => {
@@ -2965,14 +2975,22 @@ export default function App() {
       setLocalStream(stream);
 
       const peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.stunprotocol.org:3478' }
+        ],
+        iceCandidatePoolSize: 10
       });
       peerConnectionRef.current = peerConnection;
 
       stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
       peerConnection.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
       };
 
       peerConnection.onicecandidate = (event) => {
@@ -3024,6 +3042,12 @@ export default function App() {
       peerConnectionRef.current.close();
     }
     peerConnectionRef.current = null;
+    // Clear all media element srcObjects
+    [localVideoRef, remoteVideoRef, localAudioRef, remoteAudioRef].forEach(ref => {
+      if (ref.current) {
+        ref.current.srcObject = null;
+      }
+    });
     setLocalStream(null);
     setRemoteStream(null);
     setCallState(null);
@@ -3054,18 +3078,35 @@ export default function App() {
     }
   };
 
-  // Bind local/remote videos to elements when streams connect
+  // Bind streams to media elements — only when stream or ref actually changes
   useEffect(() => {
     if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+      if (localVideoRef.current.srcObject !== localStream) {
+        localVideoRef.current.srcObject = localStream;
+        localVideoRef.current.play().catch(() => {});
+      }
     }
-  }, [localStream, callState]);
+    if (localAudioRef.current && localStream) {
+      if (localAudioRef.current.srcObject !== localStream) {
+        localAudioRef.current.srcObject = localStream;
+      }
+    }
+  }, [localStream]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+      if (remoteVideoRef.current.srcObject !== remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
     }
-  }, [remoteStream, callState]);
+    if (remoteAudioRef.current && remoteStream) {
+      if (remoteAudioRef.current.srcObject !== remoteStream) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
+    }
+  }, [remoteStream]);
 
 
   // ----------------------------------------------------
@@ -5590,10 +5631,7 @@ export default function App() {
                       <div className={`room-call-video-box voice-active-ring-container ${speakingParticipants['local'] ? 'active-speaking' : ''}`} style={{ position: 'relative' }}>
                         {speakingParticipants['local'] && <div className="voice-active-ring" />}
                         <video 
-                          ref={el => {
-                            localVideoRef.current = el;
-                            if (el) el.srcObject = localStream;
-                          }} 
+                          ref={localVideoRef}
                           autoPlay 
                           muted 
                           playsInline 
@@ -5638,8 +5676,9 @@ export default function App() {
                           {speakingParticipants[p.socketId] && <div className="voice-active-ring" />}
                           <video 
                             ref={el => {
-                              if (el && p.stream) {
+                              if (el && p.stream && el.srcObject !== p.stream) {
                                 el.srcObject = p.stream;
+                                el.play().catch(() => {});
                               }
                             }} 
                             autoPlay 
@@ -7295,13 +7334,11 @@ export default function App() {
               {callState.status === 'connected' && remoteStream ? (
                 <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                   <video 
-                    ref={el => {
-                      remoteVideoRef.current = el;
-                      if (el) el.srcObject = remoteStream;
-                    }} 
+                    ref={remoteVideoRef}
                     className={`remote-video filter-${remoteVideoFilter}`} 
                     autoPlay 
-                    playsInline 
+                    playsInline
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                   {/* Connected Duration overlay on video */}
                   <div className="call-duration-badge" style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.65)', padding: '4px 10px', borderRadius: '14px', fontSize: '0.75rem', color: '#fff', zIndex: 100, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -7318,10 +7355,7 @@ export default function App() {
               {/* Local self video preview with filter */}
               <div style={{ position: 'relative' }}>
                 <video 
-                  ref={el => {
-                    localVideoRef.current = el;
-                    if (el) el.srcObject = localStream;
-                  }} 
+                  ref={localVideoRef}
                   className={`local-video-preview filter-${localVideoFilter}`} 
                   autoPlay 
                   muted 
@@ -7396,21 +7430,15 @@ export default function App() {
                 </div>
               )}
 
-              {/* Hidden audio components utilizing callback refs */}
+              {/* Hidden audio elements for voice call */}
               <audio 
-                ref={el => {
-                  localVideoRef.current = el;
-                  if (el) el.srcObject = localStream;
-                }} 
+                ref={localAudioRef}
                 autoPlay 
                 muted 
                 style={{ display: 'none' }} 
               />
               <audio 
-                ref={el => {
-                  remoteVideoRef.current = el;
-                  if (el) el.srcObject = remoteStream;
-                }} 
+                ref={remoteAudioRef}
                 autoPlay 
                 style={{ display: 'none' }} 
               />

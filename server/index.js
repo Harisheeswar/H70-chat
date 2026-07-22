@@ -54,7 +54,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // JWT verify helper
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access token required' });
@@ -77,14 +77,14 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'All fields (email, password, nickname) are required' });
   }
 
-  const existingUser = db.getUserByEmail(email);
+  const existingUser = await db.getUserByEmail(email);
   if (existingUser) {
     return res.status(400).json({ error: 'Email is already registered' });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = db.createUser({
+    const newUser = await db.createUser({
       id: Math.random().toString(36).substring(2, 9),
       email,
       password: hashedPassword,
@@ -107,7 +107,7 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  const user = db.getUserByEmail(email);
+  const user = await db.getUserByEmail(email);
   if (!user) {
     return res.status(400).json({ error: 'Invalid email or password' });
   }
@@ -123,8 +123,8 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // 3. Auth: Current Profile
-app.get('/api/auth/me', authenticateToken, (req, res) => {
-  const user = db.getUserById(req.user.id);
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  const user = await db.getUserById(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { password, ...userWithoutPassword } = user;
   res.json(userWithoutPassword);
@@ -135,7 +135,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
-  const user = db.getUserByEmail(email);
+  const user = await db.getUserByEmail(email);
   if (!user) {
     return res.json({ success: true, message: 'check sent mail for password reset' });
   }
@@ -207,13 +207,13 @@ app.post('/api/auth/reset-password', async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
 
-  const email = db.verifyResetToken(token);
+  const email = await db.verifyResetToken(token);
   if (!email) {
     return res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 
   try {
-    const user = db.getUserByEmail(email);
+    const user = await db.getUserByEmail(email);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -234,21 +234,21 @@ app.post('/api/upload', upload.single('media'), (req, res) => {
 });
 
 // 7. Profile: Update Bio
-app.post('/api/profile/bio', authenticateToken, (req, res) => {
+app.post('/api/profile/bio', authenticateToken, async (req, res) => {
   const { bio } = req.body;
   if (bio === undefined) return res.status(400).json({ error: 'Bio content is required' });
 
-  const updated = db.updateUser(req.user.id, { bio });
+  const updated = await db.updateUser(req.user.id, { bio });
   const { password, ...user } = updated;
   res.json(user);
 });
 
 // 8. Profile: Add Story (Text or Image)
-app.post('/api/profile/story', authenticateToken, (req, res) => {
+app.post('/api/profile/story', authenticateToken, async (req, res) => {
   const { type, content } = req.body;
   if (!type || !content) return res.status(400).json({ error: 'Story type and content are required' });
 
-  const user = db.getUserById(req.user.id);
+  const user = await db.getUserById(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const newStory = {
@@ -261,7 +261,7 @@ app.post('/api/profile/story', authenticateToken, (req, res) => {
   const stories = user.stories ? [...user.stories] : [];
   stories.push(newStory);
 
-  const updated = db.updateUser(req.user.id, { stories });
+  const updated = await db.updateUser(req.user.id, { stories });
   
   // Notify sockets that user stories updated
   io.emit('user-story-updated', { userId: user.id, stories: updated.stories });
@@ -271,11 +271,11 @@ app.post('/api/profile/story', authenticateToken, (req, res) => {
 });
 
 // 9. Profile: Update Avatar
-app.post('/api/profile/avatar', authenticateToken, (req, res) => {
+app.post('/api/profile/avatar', authenticateToken, async (req, res) => {
   const { avatarUrl } = req.body;
   if (!avatarUrl) return res.status(400).json({ error: 'Avatar URL is required' });
 
-  const updated = db.updateUser(req.user.id, { avatar: avatarUrl });
+  const updated = await db.updateUser(req.user.id, { avatar: avatarUrl });
   
   // Refresh active user socket caches
   for (const [socketId, activeUser] of activeSockets.entries()) {
@@ -292,22 +292,22 @@ app.post('/api/profile/avatar', authenticateToken, (req, res) => {
 });
 
 // Get specific user profile by ID
-app.get('/api/users/:userId', (req, res) => {
-  const targetUser = db.getUserById(req.params.userId);
+app.get('/api/users/:userId', async (req, res) => {
+  const targetUser = await db.getUserById(req.params.userId);
   if (!targetUser) return res.status(404).json({ error: 'User not found' });
   const { password, ...safeUser } = targetUser;
   res.json(safeUser);
 });
 
 // Delete specific story from user profile
-app.delete('/api/profile/story/:storyId', authenticateToken, (req, res) => {
-  const user = db.getUserById(req.user.id);
+app.delete('/api/profile/story/:storyId', authenticateToken, async (req, res) => {
+  const user = await db.getUserById(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const storyId = req.params.storyId;
   const stories = user.stories ? user.stories.filter(s => s.id !== storyId) : [];
 
-  const updated = db.updateUser(req.user.id, { stories });
+  const updated = await db.updateUser(req.user.id, { stories });
   
   // Notify sockets that user stories updated
   io.emit('user-story-updated', { userId: user.id, stories: updated.stories });
@@ -317,9 +317,9 @@ app.delete('/api/profile/story/:storyId', authenticateToken, (req, res) => {
 });
 
 // 10. Users: Fetch All Registered Users
-app.get('/api/users', (req, res) => {
+app.get('/api/users', async (req, res) => {
   try {
-    const users = db.getUsers();
+    const users = await db.getUsers();
     const filtered = users.filter(u => {
       const isSuper = u.role === 'supervisor' || u.email?.toLowerCase() === 'harisheeswar722@gmail.com' || u.nickname === 'hari980';
       return !isSuper;
@@ -331,9 +331,9 @@ app.get('/api/users', (req, res) => {
 });
 
 // 10.5. Supervisor: Audit All Chats & Images
-app.get('/api/supervisor/audit', authenticateToken, (req, res) => {
+app.get('/api/supervisor/audit', authenticateToken, async (req, res) => {
   try {
-    const user = db.getUserById(req.user.id);
+    const user = await db.getUserById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const isSuper = user.role === 'supervisor' || user.email?.toLowerCase() === 'harisheeswar722@gmail.com' || user.nickname === 'hari980';
@@ -430,12 +430,12 @@ app.post('/api/friends/accept', authenticateToken, async (req, res) => {
   // Add to each other's friends list
   const myFriends = user.friends ? [...user.friends] : [];
   if (!myFriends.includes(friendId)) myFriends.push(friendId);
-  const myRequests = (user.friendRequests || []).filter(id => id !== friendId);
+  const myRequests = async (user.friendRequests || []).filter(id => id !== friendId);
   const updatedUser = await db.updateUser(req.user.id, { friends: myFriends, friendRequests: myRequests });
 
   const theirFriends = target.friends ? [...target.friends] : [];
   if (!theirFriends.includes(req.user.id)) theirFriends.push(req.user.id);
-  const theirSentRequests = (target.sentRequests || []).filter(id => id !== req.user.id);
+  const theirSentRequests = async (target.sentRequests || []).filter(id => id !== req.user.id);
   await db.updateUser(friendId, { friends: theirFriends, sentRequests: theirSentRequests });
 
   // Notify via socket
@@ -456,13 +456,13 @@ app.post('/api/friends/decline', authenticateToken, async (req, res) => {
   if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
 
   const user = await db.getUserById(req.user.id);
-  const myRequests = (user.friendRequests || []).filter(id => id !== friendId);
+  const myRequests = async (user.friendRequests || []).filter(id => id !== friendId);
   const updatedUser = await db.updateUser(req.user.id, { friendRequests: myRequests });
 
   // Also clear sentRequest on their side
   const target = await db.getUserById(friendId);
   if (target) {
-    const theirSent = (target.sentRequests || []).filter(id => id !== req.user.id);
+    const theirSent = async (target.sentRequests || []).filter(id => id !== req.user.id);
     await db.updateUser(friendId, { sentRequests: theirSent });
   }
 
@@ -475,7 +475,7 @@ app.post('/api/friends/remove', authenticateToken, async (req, res) => {
   if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
   
   const user = await db.getUserById(req.user.id);
-  let friends = (user.friends || []).filter(id => id !== friendId);
+  let friends = async (user.friends || []).filter(id => id !== friendId);
   const updated = await db.updateUser(req.user.id, { friends });
   
   sendOnlineUsersList();
@@ -484,18 +484,18 @@ app.post('/api/friends/remove', authenticateToken, async (req, res) => {
 });
 
 // 13. Blocks: Toggle Block User
-app.post('/api/block/toggle', authenticateToken, (req, res) => {
+app.post('/api/block/toggle', authenticateToken, async (req, res) => {
   const { blockId } = req.body;
   if (!blockId) return res.status(400).json({ error: 'User ID to block/unblock is required' });
   
-  const user = db.getUserById(req.user.id);
+  const user = await db.getUserById(req.user.id);
   let blockedUsers = user.blockedUsers ? [...user.blockedUsers] : [];
   if (blockedUsers.includes(blockId)) {
     blockedUsers = blockedUsers.filter(id => id !== blockId);
   } else {
     blockedUsers.push(blockId);
   }
-  const updated = db.updateUser(req.user.id, { blockedUsers });
+  const updated = await db.updateUser(req.user.id, { blockedUsers });
   
   // Refresh active socket caches
   for (const [socketId, activeUser] of activeSockets.entries()) {
@@ -510,14 +510,14 @@ app.post('/api/block/toggle', authenticateToken, (req, res) => {
 });
 
 // 14. Reports: Report User
-app.post('/api/report', authenticateToken, (req, res) => {
+app.post('/api/report', authenticateToken, async (req, res) => {
   const { reportedId, reason } = req.body;
   if (!reportedId || !reason) return res.status(400).json({ error: 'Reported user ID and reason are required' });
   
-  const target = db.getUserById(reportedId);
+  const target = await db.getUserById(reportedId);
   if (!target) return res.status(404).json({ error: 'User not found' });
   
-  const newReport = db.createReport({
+  const newReport = await db.createReport({
     reporterId: req.user.id,
     reportedId,
     reason
@@ -526,7 +526,7 @@ app.post('/api/report', authenticateToken, (req, res) => {
 });
 
 // 15. Settings: Update User Settings
-app.post('/api/profile/settings', authenticateToken, (req, res) => {
+app.post('/api/profile/settings', authenticateToken, async (req, res) => {
   const { privacyMode, soundLevel, notificationsEnabled, animal, glowStyle, glowColor } = req.body;
   const updates = {};
   if (privacyMode !== undefined) updates.privacyMode = privacyMode;
@@ -536,7 +536,7 @@ app.post('/api/profile/settings', authenticateToken, (req, res) => {
   if (glowStyle !== undefined) updates.glowStyle = glowStyle;
   if (glowColor !== undefined) updates.glowColor = glowColor;
   
-  const updated = db.updateUser(req.user.id, updates);
+  const updated = await db.updateUser(req.user.id, updates);
   
   // Refresh active socket caches
   for (const [socketId, activeUser] of activeSockets.entries()) {
@@ -556,7 +556,7 @@ app.post('/api/profile/settings', authenticateToken, (req, res) => {
 });
 
 // 15.5. Clear Direct Messages
-app.post('/api/messages/clear', authenticateToken, (req, res) => {
+app.post('/api/messages/clear', authenticateToken, async (req, res) => {
   const { recipientId } = req.body;
   if (!recipientId) return res.status(400).json({ error: 'recipientId is required' });
   const chatKey = [req.user.id, recipientId].sort().join('-');
@@ -574,24 +574,24 @@ const activeSockets = new Map(); // socket.id -> { userId, nickname, level, xp }
 const activeUsers = new Map(); // userId -> socket.id (for easy 1-on-1 routing)
 
 // Attaches live Socket.io room member counts to each room object
-function getRoomsWithLiveCounts() {
+async function getRoomsWithLiveCounts() {
   return db.getRooms().map(room => ({
     ...room,
     onlineCount: io.sockets.adapter.rooms.get(room.id)?.size || 0
   }));
 }
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 
   // User details identification on socket connection
-  socket.on('identify', ({ token, guestNickname }) => {
+  socket.on('identify', async ({ token, guestNickname }) => {
     let userDetails = null;
 
     if (token) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        const user = db.getUserById(decoded.id);
+        const user = await db.getUserById(decoded.id);
         if (user) {
           userDetails = {
             id: user.id,
@@ -655,7 +655,7 @@ io.on('connection', (socket) => {
   });
 
   // Handle room changes
-  socket.on('join-room', (roomId) => {
+  socket.on('join-room', async (roomId) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
@@ -669,12 +669,12 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     
     // Send previous room messages
-    const roomMessages = db.getMessages({ roomId });
+    const roomMessages = await db.getMessages({ roomId });
     socket.emit('room-history', { roomId, messages: roomMessages });
   });
 
   // Return list of users the logged-in user has DM history with
-  socket.on('get-dm-contacts', () => {
+  socket.on('get-dm-contacts', async () => {
     const user = activeSockets.get(socket.id);
     if (!user || user.isGuest) return socket.emit('dm-contacts', []);
     const contacts = getDmContactsWithProfiles(user.id);
@@ -682,12 +682,12 @@ io.on('connection', (socket) => {
   });
 
   // Create custom room
-  socket.on('create-room', ({ name }) => {
+  socket.on('create-room', async ({ name }) => {
     const user = activeSockets.get(socket.id);
     if (!user || !name) return;
 
     const roomId = 'room_' + Math.random().toString(36).substring(2, 9);
-    const newRoom = db.createRoom({
+    const newRoom = await db.createRoom({
       id: roomId,
       name,
       creatorId: user.id
@@ -701,16 +701,16 @@ io.on('connection', (socket) => {
   });
 
   // Promote user to Room Admin
-  socket.on('promote-to-admin', ({ roomId, userId }) => {
+  socket.on('promote-to-admin', async ({ roomId, userId }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
-    const rooms = db.getRooms();
+    const rooms = await db.getRooms();
     const room = rooms.find(r => r.id === roomId);
     if (!room) return;
 
     // Verify sender is admin (fall back to creator check)
-    const isAdmin = (room.admins && room.admins.includes(user.id)) || room.creatorId === user.id;
+    const isAdmin = async (room.admins && room.admins.includes(user.id)) || room.creatorId === user.id;
     if (!isAdmin) return;
 
     const updatedAdmins = room.admins ? [...room.admins] : [room.creatorId];
@@ -727,16 +727,16 @@ io.on('connection', (socket) => {
   });
 
   // Update Room Avatar Profile Picture
-  socket.on('update-room-avatar', ({ roomId, avatarUrl }) => {
+  socket.on('update-room-avatar', async ({ roomId, avatarUrl }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
-    const rooms = db.getRooms();
+    const rooms = await db.getRooms();
     const room = rooms.find(r => r.id === roomId);
     if (!room) return;
 
     // Verify sender is admin (fall back to creator check)
-    const isAdmin = (room.admins && room.admins.includes(user.id)) || room.creatorId === user.id;
+    const isAdmin = async (room.admins && room.admins.includes(user.id)) || room.creatorId === user.id;
     if (!isAdmin) return;
 
     db.updateRoom(roomId, { avatar: avatarUrl });
@@ -749,11 +749,11 @@ io.on('connection', (socket) => {
   });
 
   // Delete Room (Supervisor or Room Creator only)
-  socket.on('delete-room', ({ roomId }) => {
+  socket.on('delete-room', async ({ roomId }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
-    const rooms = db.getRooms();
+    const rooms = await db.getRooms();
     const room = rooms.find(r => r.id === roomId);
     if (!room) return;
 
@@ -773,7 +773,7 @@ io.on('connection', (socket) => {
   });
 
   // Kick User (Supervisor only)
-  socket.on('kick-user', ({ roomId, userId }) => {
+  socket.on('kick-user', async ({ roomId, userId }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
@@ -793,11 +793,11 @@ io.on('connection', (socket) => {
   });
 
   // Send public room message
-  socket.on('send-room-message', ({ id, roomId, type, content }) => {
+  socket.on('send-room-message', async ({ id, roomId, type, content }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
-    const msg = db.createMessage({
+    const msg = await db.createMessage({
       id,
       roomId,
       senderId: user.id,
@@ -812,12 +812,12 @@ io.on('connection', (socket) => {
   });
 
   // Send Direct Message (DM)
-  socket.on('send-direct-message', ({ id, recipientId, type, content, viewsRemaining }) => {
+  socket.on('send-direct-message', async ({ id, recipientId, type, content, viewsRemaining }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
-    const sender = db.getUserById(user.id);
-    const recipient = db.getUserById(recipientId);
+    const sender = await db.getUserById(user.id);
+    const recipient = await db.getUserById(recipientId);
     if (!recipient) return;
 
     // Generate standard sorted chat key for the two users
@@ -839,7 +839,7 @@ io.on('connection', (socket) => {
       return socket.emit('direct-message-error', { error: 'This user\'s profile is Private. You can only message them if you are mutual friends.' });
     }
 
-    const msg = db.createMessage({
+    const msg = await db.createMessage({
       id,
       chatKey,
       senderId: user.id,
@@ -868,7 +868,7 @@ io.on('connection', (socket) => {
   });
 
   // Game invitation and synchronization socket events
-  socket.on('game-action-invite', ({ gameId, recipientId, gameName }) => {
+  socket.on('game-action-invite', async ({ gameId, recipientId, gameName }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
     const recipientSocketId = activeUsers.get(recipientId);
@@ -882,7 +882,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('game-action-sync', ({ gameId, recipientId, gameState }) => {
+  socket.on('game-action-sync', async ({ gameId, recipientId, gameState }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
     const recipientSocketId = activeUsers.get(recipientId);
@@ -895,20 +895,20 @@ io.on('connection', (socket) => {
   });
 
   // Load private DM message history
-  socket.on('get-direct-history', ({ recipientId }) => {
+  socket.on('get-direct-history', async ({ recipientId }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
     const chatKey = [user.id, recipientId].sort().join('-');
-    const messages = db.getMessages({ chatKey });
+    const messages = await db.getMessages({ chatKey });
     socket.emit('direct-history', { recipientId, messages });
   });
 
-  socket.on('update-direct-message', ({ msgId, chatKey, content }) => {
+  socket.on('update-direct-message', async ({ msgId, chatKey, content }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
-    const updated = db.updateMessageContent(msgId, content);
+    const updated = await db.updateMessageContent(msgId, content);
     if (updated) {
       const parts = chatKey.split('-');
       const recipientId = parts.find(id => id !== user.id);
@@ -924,11 +924,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('update-direct-message-views', ({ msgId, chatKey, viewsRemaining }) => {
+  socket.on('update-direct-message-views', async ({ msgId, chatKey, viewsRemaining }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
-    const updated = db.updateMessageViews(msgId, viewsRemaining);
+    const updated = await db.updateMessageViews(msgId, viewsRemaining);
     if (updated) {
       const parts = chatKey.split('-');
       const recipientId = parts.find(id => id !== user.id);
@@ -945,11 +945,11 @@ io.on('connection', (socket) => {
   });
 
   // Mark direct messages as read
-  socket.on('mark-message-read', ({ chatKey }) => {
+  socket.on('mark-message-read', async ({ chatKey }) => {
     const user = activeSockets.get(socket.id);
     if (!user || !chatKey) return;
 
-    const updatedMessages = db.markMessagesAsRead(chatKey, user.id);
+    const updatedMessages = await db.markMessagesAsRead(chatKey, user.id);
     socket.emit('direct-history-updated', { chatKey, messages: updatedMessages });
 
     const ids = chatKey.split('-');
@@ -963,7 +963,7 @@ io.on('connection', (socket) => {
   });
 
   // Typing state indicators
-  socket.on('dm-typing', ({ recipientId, isTyping }) => {
+  socket.on('dm-typing', async ({ recipientId, isTyping }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
     const recipientSocketId = activeUsers.get(recipientId);
@@ -973,17 +973,17 @@ io.on('connection', (socket) => {
   });
 
   // Room typing indicator (broadcasts to everyone else in the room)
-  socket.on('room-typing', ({ roomId, isTyping }) => {
+  socket.on('room-typing', async ({ roomId, isTyping }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
     socket.to(roomId).emit('room-user-typing-state', { roomId, userId: user.id, nickname: user.nickname, isTyping });
   });
 
   // Toggle a reaction on a message (works for both room and DM messages)
-  socket.on('toggle-reaction', ({ messageId, emoji, roomId, chatKey }) => {
+  socket.on('toggle-reaction', async ({ messageId, emoji, roomId, chatKey }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
-    const updated = db.toggleReaction(messageId, user.id, emoji);
+    const updated = await db.toggleReaction(messageId, user.id, emoji);
     if (!updated) return;
 
     if (roomId) {
@@ -1002,13 +1002,13 @@ io.on('connection', (socket) => {
   // ----------------------------------------------------
 
   // 1-on-1 Calling
-  socket.on('call-user', ({ to, offer, type }) => {
+  socket.on('call-user', async ({ to, offer, type }) => {
     const fromUser = activeSockets.get(socket.id);
     if (!fromUser) return;
 
-    const sender = db.getUserById(fromUser.id);
-    const recipient = db.getUserById(to);
-    if (!recipient) return;
+    const sender = await db.getUserById(fromUser.id);
+    const recipient = await db.getUserById(to);
+    if (!recipient || !sender) return;
 
     const senderAddedRecipient = sender.friends && sender.friends.includes(to);
     const recipientAddedSender = recipient.friends && recipient.friends.includes(fromUser.id);
@@ -1029,7 +1029,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('make-answer', ({ to, answer }) => {
+  socket.on('make-answer', async ({ to, answer }) => {
     const targetSocketId = activeUsers.get(to);
     if (targetSocketId) {
       io.to(targetSocketId).emit('answer-made', {
@@ -1039,7 +1039,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('ice-candidate', ({ to, candidate }) => {
+  socket.on('ice-candidate', async ({ to, candidate }) => {
     const targetSocketId = activeUsers.get(to);
     if (targetSocketId) {
       io.to(targetSocketId).emit('ice-candidate', {
@@ -1049,14 +1049,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('reject-call', ({ to }) => {
+  socket.on('reject-call', async ({ to }) => {
     const targetSocketId = activeUsers.get(to);
     if (targetSocketId) {
       io.to(targetSocketId).emit('call-rejected');
     }
   });
 
-  socket.on('hangup', ({ to }) => {
+  socket.on('hangup', async ({ to }) => {
     const targetSocketId = activeUsers.get(to);
     if (targetSocketId) {
       io.to(targetSocketId).emit('call-hungup');
@@ -1064,7 +1064,7 @@ io.on('connection', (socket) => {
   });
 
   // Relay video call filter change to the other party (DM call)
-  socket.on('call-video-filter', ({ to, filter }) => {
+  socket.on('call-video-filter', async ({ to, filter }) => {
     const targetSocketId = activeUsers.get(to);
     if (targetSocketId) {
       io.to(targetSocketId).emit('call-video-filter', { filter, socketId: socket.id });
@@ -1072,14 +1072,14 @@ io.on('connection', (socket) => {
   });
 
   // Relay video call filter change to all other participants (Room call)
-  socket.on('room-call-video-filter', ({ roomId, filter }) => {
+  socket.on('room-call-video-filter', async ({ roomId, filter }) => {
     const callRoomName = `call-${roomId}`;
     socket.to(callRoomName).emit('room-call-video-filter', { socketId: socket.id, filter });
   });
 
   // Room Calls (Mesh Signaling Support)
   // Users join a voice/video session in a specific chat room
-  socket.on('join-room-call', ({ roomId, type }) => {
+  socket.on('join-room-call', async ({ roomId, type }) => {
     const user = activeSockets.get(socket.id);
     if (!user) return;
 
@@ -1111,14 +1111,14 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('leave-room-call', ({ roomId }) => {
+  socket.on('leave-room-call', async ({ roomId }) => {
     const callRoomName = `call-${roomId}`;
     socket.leave(callRoomName);
     socket.to(callRoomName).emit('user-left-room-call', { socketId: socket.id });
   });
 
   // Disconnection cleanup
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     const user = activeSockets.get(socket.id);
     if (user) {
       activeUsers.delete(user.id);
@@ -1142,7 +1142,7 @@ io.on('connection', (socket) => {
 });
 
 // Broadcast online users (with levels & bios) to everyone, hiding Supervisors from other users
-  function sendOnlineUsersList() {
+  async function sendOnlineUsersList() {
     for (const [socketId, socket] of io.of("/").sockets.entries()) {
       const viewer = activeSockets.get(socketId);
       const users = [];
@@ -1180,7 +1180,7 @@ io.on('connection', (socket) => {
       }
 
       // 2. Add offline registered users
-      const registered = db.getUsers();
+      const registered = await db.getUsers();
       registered.forEach(regUser => {
         if (!processed.has(regUser.id)) {
           processed.add(regUser.id);
@@ -1210,10 +1210,10 @@ io.on('connection', (socket) => {
     }
   }
 
-  function getDmContactsWithProfiles(userId) {
-    const contactIds = db.getDmContacts(userId);
-    return contactIds.map(id => {
-      const profile = db.getUserById(id);
+  async function getDmContactsWithProfiles(userId) {
+    const contactIds = await db.getDmContacts(userId);
+    return Promise.all(contactIds.map(async id => {
+      const profile = await db.getUserById(id);
       if (profile) {
         return {
           id: profile.id,
@@ -1236,14 +1236,14 @@ io.on('connection', (socket) => {
         isOnline: activeUsers.has(id),
         lastSeen: null
       };
-    });
+    }));
   }
 
 // ----------------------------------------------------
 // USER PROGRESSION (LEVELS AND XP ENGINE)
 // ----------------------------------------------------
 // Gives online registered users 5 XP every 30 seconds of active socket connection.
-setInterval(() => {
+setInterval(async () => {
   const processedUserIds = new Set();
 
   for (const [socketId, user] of activeSockets.entries()) {
@@ -1251,7 +1251,7 @@ setInterval(() => {
     if (user.isGuest || processedUserIds.has(user.id)) continue;
     processedUserIds.add(user.id);
 
-    const dbUser = db.getUserById(user.id);
+    const dbUser = await db.getUserById(user.id);
     if (!dbUser) continue;
 
     let newXp = (dbUser.xp || 0) + 5;
