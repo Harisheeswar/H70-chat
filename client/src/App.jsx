@@ -307,6 +307,8 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const localAudioRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const peerConnectionRef = useRef(null);
 
   const [callDuration, setCallDuration] = useState(0);
@@ -691,11 +693,13 @@ export default function App() {
 
   const getFriendshipState = (targetUser) => {
     if (!user || !targetUser) return 'none';
-    const addedThem = user.friends?.includes(targetUser.id);
-    const addedMe = targetUser.friends?.includes(user.id);
-    if (addedThem && addedMe) return 'friends';
-    if (addedThem) return 'sent';
-    if (addedMe) return 'received';
+    const isFriends = user.friends?.includes(targetUser.id) && targetUser.friends?.includes(user.id);
+    if (isFriends) return 'friends';
+    const iReceived = user.friendRequests?.includes(targetUser.id);
+    if (iReceived) return 'received'; // they sent me a request
+    const iSent = user.sentRequests?.includes(targetUser.id) || 
+                  (user.friends?.includes(targetUser.id) && !targetUser.friends?.includes(user.id));
+    if (iSent) return 'sent'; // I sent them a request
     return 'none';
   };
 
@@ -708,22 +712,34 @@ export default function App() {
         body: JSON.stringify({ friendId })
       });
       const updated = await res.json();
-      if (res.ok) setUser(updated);
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
     } catch (err) { console.error(err); }
   };
 
   const handleAcceptFriend = async (friendId) => {
-    // Accepting = also calling friends/add on our side (mutual add = friends)
-    await handleSendFriendRequest(friendId);
-    // Refresh registered users so the badge updates
-    fetchAllUsers();
+    if (!friendId || !token) return;
+    try {
+      const res = await fetch('/api/friends/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ friendId })
+      });
+      const updated = await res.json();
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
+    } catch (err) { console.error(err); }
   };
 
   const handleDeclineFriend = async (friendId) => {
-    // Declining = no action needed on our side, just refresh UI
-    // (the other person already added us; we just don't add back)
-    // Optionally could block or just ignore — for now just refresh
-    fetchAllUsers();
+    if (!friendId || !token) return;
+    try {
+      const res = await fetch('/api/friends/decline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ friendId })
+      });
+      const updated = await res.json();
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
+    } catch (err) { console.error(err); }
   };
 
   const handleRemoveFriend = async (friendId) => {
@@ -735,7 +751,7 @@ export default function App() {
         body: JSON.stringify({ friendId })
       });
       const updated = await res.json();
-      if (res.ok) setUser(updated);
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
     } catch (err) { console.error(err); }
   };
 
@@ -748,7 +764,7 @@ export default function App() {
         body: JSON.stringify({ blockId })
       });
       const updated = await res.json();
-      if (res.ok) setUser(updated);
+      if (res.ok) { setUser(updated); fetchAllUsers(); }
     } catch (err) { console.error(err); }
   };
 
@@ -1057,6 +1073,27 @@ export default function App() {
 
     socket.on('message-reaction-updated', ({ messageId, reactions }) => {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
+    });
+
+    // Real-time friend request notifications
+    socket.on('friend-request-received', ({ from }) => {
+      setUser(prev => {
+        if (!prev) return prev;
+        const reqs = prev.friendRequests || [];
+        if (reqs.includes(from.id)) return prev;
+        return { ...prev, friendRequests: [...reqs, from.id] };
+      });
+      fetchAllUsers();
+    });
+
+    socket.on('friend-accepted', ({ by, user: updatedUser }) => {
+      setUser(prev => {
+        if (!prev) return prev;
+        const friends = prev.friends || [];
+        if (friends.includes(by)) return prev;
+        return { ...prev, friends: [...friends, by] };
+      });
+      fetchAllUsers();
     });
 
     // Level & XP update events
@@ -2889,14 +2926,22 @@ export default function App() {
       });
 
       const peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.stunprotocol.org:3478' }
+        ],
+        iceCandidatePoolSize: 10
       });
       peerConnectionRef.current = peerConnection;
 
       stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
       peerConnection.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
       };
 
       peerConnection.onicecandidate = (event) => {
@@ -2930,14 +2975,22 @@ export default function App() {
       setLocalStream(stream);
 
       const peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.stunprotocol.org:3478' }
+        ],
+        iceCandidatePoolSize: 10
       });
       peerConnectionRef.current = peerConnection;
 
       stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
       peerConnection.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
       };
 
       peerConnection.onicecandidate = (event) => {
@@ -2989,6 +3042,12 @@ export default function App() {
       peerConnectionRef.current.close();
     }
     peerConnectionRef.current = null;
+    // Clear all media element srcObjects
+    [localVideoRef, remoteVideoRef, localAudioRef, remoteAudioRef].forEach(ref => {
+      if (ref.current) {
+        ref.current.srcObject = null;
+      }
+    });
     setLocalStream(null);
     setRemoteStream(null);
     setCallState(null);
@@ -3019,18 +3078,35 @@ export default function App() {
     }
   };
 
-  // Bind local/remote videos to elements when streams connect
+  // Bind streams to media elements — only when stream or ref actually changes
   useEffect(() => {
     if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+      if (localVideoRef.current.srcObject !== localStream) {
+        localVideoRef.current.srcObject = localStream;
+        localVideoRef.current.play().catch(() => {});
+      }
     }
-  }, [localStream, callState]);
+    if (localAudioRef.current && localStream) {
+      if (localAudioRef.current.srcObject !== localStream) {
+        localAudioRef.current.srcObject = localStream;
+      }
+    }
+  }, [localStream]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+      if (remoteVideoRef.current.srcObject !== remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
     }
-  }, [remoteStream, callState]);
+    if (remoteAudioRef.current && remoteStream) {
+      if (remoteAudioRef.current.srcObject !== remoteStream) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
+    }
+  }, [remoteStream]);
 
 
   // ----------------------------------------------------
@@ -4073,7 +4149,7 @@ export default function App() {
                       onClick={() => setPeopleTab('requests')}
                       style={{ background: 'transparent', border: 'none', fontSize: '0.78rem', fontWeight: peopleTab === 'requests' ? 800 : 500, color: peopleTab === 'requests' ? '#3b82f6' : 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px' }}
                     >
-                      FRIEND REQUESTS [{(registeredUsers.length ? registeredUsers : onlineUsers).filter(u => user?.friendRequests?.includes(u.id)).length || user?.friendRequests?.length || 0}]
+                      FRIEND REQUESTS [{user?.friendRequests?.length || 0}]
                     </button>
                     <button 
                       onClick={() => setPeopleTab('blocked')}
@@ -4202,9 +4278,10 @@ export default function App() {
                           )}
                           {results.map(u => {
                             const isOnline = onlineUsers.some(o => o.id === u.id);
-                            const isFriend = user?.friends?.includes(u.id) && u.friends?.includes(user?.id);
-                            const hasSent = user?.friends?.includes(u.id) && !isFriend;
-                            const hasReceived = !user?.friends?.includes(u.id) && u.friends?.includes(user?.id);
+                            const state = getFriendshipState(u);
+                            const isFriend = state === 'friends';
+                            const hasSent = state === 'sent';
+                            const hasReceived = state === 'received';
                             return (
                               <div
                                 key={u.id}
@@ -5554,10 +5631,7 @@ export default function App() {
                       <div className={`room-call-video-box voice-active-ring-container ${speakingParticipants['local'] ? 'active-speaking' : ''}`} style={{ position: 'relative' }}>
                         {speakingParticipants['local'] && <div className="voice-active-ring" />}
                         <video 
-                          ref={el => {
-                            localVideoRef.current = el;
-                            if (el) el.srcObject = localStream;
-                          }} 
+                          ref={localVideoRef}
                           autoPlay 
                           muted 
                           playsInline 
@@ -5602,8 +5676,9 @@ export default function App() {
                           {speakingParticipants[p.socketId] && <div className="voice-active-ring" />}
                           <video 
                             ref={el => {
-                              if (el && p.stream) {
+                              if (el && p.stream && el.srcObject !== p.stream) {
                                 el.srcObject = p.stream;
+                                el.play().catch(() => {});
                               }
                             }} 
                             autoPlay 
@@ -7259,13 +7334,11 @@ export default function App() {
               {callState.status === 'connected' && remoteStream ? (
                 <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                   <video 
-                    ref={el => {
-                      remoteVideoRef.current = el;
-                      if (el) el.srcObject = remoteStream;
-                    }} 
+                    ref={remoteVideoRef}
                     className={`remote-video filter-${remoteVideoFilter}`} 
                     autoPlay 
-                    playsInline 
+                    playsInline
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                   {/* Connected Duration overlay on video */}
                   <div className="call-duration-badge" style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.65)', padding: '4px 10px', borderRadius: '14px', fontSize: '0.75rem', color: '#fff', zIndex: 100, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -7282,10 +7355,7 @@ export default function App() {
               {/* Local self video preview with filter */}
               <div style={{ position: 'relative' }}>
                 <video 
-                  ref={el => {
-                    localVideoRef.current = el;
-                    if (el) el.srcObject = localStream;
-                  }} 
+                  ref={localVideoRef}
                   className={`local-video-preview filter-${localVideoFilter}`} 
                   autoPlay 
                   muted 
@@ -7360,21 +7430,15 @@ export default function App() {
                 </div>
               )}
 
-              {/* Hidden audio components utilizing callback refs */}
+              {/* Hidden audio elements for voice call */}
               <audio 
-                ref={el => {
-                  localVideoRef.current = el;
-                  if (el) el.srcObject = localStream;
-                }} 
+                ref={localAudioRef}
                 autoPlay 
                 muted 
                 style={{ display: 'none' }} 
               />
               <audio 
-                ref={el => {
-                  remoteVideoRef.current = el;
-                  if (el) el.srcObject = remoteStream;
-                }} 
+                ref={remoteAudioRef}
                 autoPlay 
                 style={{ display: 'none' }} 
               />

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web AR Studio</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Main Camera Viewport -->
+        <div class="camera-viewport">
+            <img id="video_feed" src="{{ url_for('video_feed') }}" alt="Camera Feed">
+            
+            <!-- Glassmorphism Controls Overlay -->
+            <div class="controls-panel glassmorphism">
+                <h1 class="app-title">Web AR Studio</h1>
+                <div class="lens-selector">
+                    <button class="lens-btn active" onclick="setLens(0)">No Filter</button>
+                    <button class="lens-btn" onclick="setLens(1)">Doll Lens</button>
+                    <button class="lens-btn" onclick="setLens(2)">AI Anime Lens</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function setLens(lensId) {
+            // Update active button state
+            document.querySelectorAll('.lens-btn').forEach((btn, index) => {
+                if(index === lensId) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Send request to backend
+            fetch(`/set_lens/${lensId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => console.log('Lens updated:', data))
+                .catch(error => console.error('Error setting lens:', error));
+        }
+    </script>
+</body>
+</html>
