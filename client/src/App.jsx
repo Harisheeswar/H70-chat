@@ -1525,23 +1525,43 @@ export default function App() {
   // Send message
   const handleSendMessage = () => {
     if (!msgText.trim() || !currentChat) return;
+    const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const text = msgText.trim();
 
     if (currentChat.type === 'room') {
-      socketRef.current?.emit('send-room-message', {
+      const optimistic = {
+        id: msgId,
         roomId: currentChat.id,
+        senderId: user?.id,
+        senderNickname: user?.nickname,
+        senderLevel: user?.level || 1,
         type: 'text',
-        content: msgText.trim()
-      });
+        content: text,
+        reactions: {},
+        createdAt: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, optimistic]);
+      socketRef.current?.emit('send-room-message', { id: msgId, roomId: currentChat.id, type: 'text', content: text });
       if (isTypingRef.current) {
         isTypingRef.current = false;
         socketRef.current?.emit('room-typing', { roomId: currentChat.id, isTyping: false });
       }
     } else {
-      socketRef.current?.emit('send-direct-message', {
+      const optimistic = {
+        id: msgId,
+        chatKey: [user?.id, currentChat.id].sort().join('-'),
+        senderId: user?.id,
+        senderNickname: user?.nickname,
+        senderLevel: user?.level || 1,
         recipientId: currentChat.id,
         type: 'text',
-        content: msgText.trim()
-      });
+        content: text,
+        reactions: {},
+        read: false,
+        createdAt: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, optimistic]);
+      socketRef.current?.emit('send-direct-message', { id: msgId, recipientId: currentChat.id, type: 'text', content: text });
       if (isTypingRef.current) {
         isTypingRef.current = false;
         socketRef.current?.emit('dm-typing', { recipientId: currentChat.id, isTyping: false });
@@ -2468,13 +2488,13 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
       if (currentChat.type === 'room') {
-        socketRef.current?.emit('send-room-message', {
+        socketRef.current?.emit('send-room-message', { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2,7),
           roomId: currentChat.id,
           type: 'image',
           content: data.url
         });
       } else {
-        socketRef.current?.emit('send-direct-message', {
+        socketRef.current?.emit('send-direct-message', { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2,7),
           recipientId: currentChat.id,
           type: 'image',
           content: data.url,
@@ -2536,13 +2556,13 @@ export default function App() {
           if (!res.ok) throw new Error(data.error || 'Upload failed');
 
           if (currentChat.type === 'room') {
-            socketRef.current?.emit('send-room-message', {
+            socketRef.current?.emit('send-room-message', { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2,7),
               roomId: currentChat.id,
               type: 'image',
               content: data.url
             });
           } else {
-            socketRef.current?.emit('send-direct-message', {
+            socketRef.current?.emit('send-direct-message', { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2,7),
               recipientId: currentChat.id,
               type: isViewOnceImage ? 'image_view_once' : 'image',
               content: data.url,
@@ -2790,13 +2810,13 @@ export default function App() {
           if (!res.ok) throw new Error(data.error || 'Upload failed');
 
           if (currentChat.type === 'room') {
-            socketRef.current?.emit('send-room-message', {
+            socketRef.current?.emit('send-room-message', { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2,7),
               roomId: currentChat.id,
               type: 'audio',
               content: data.url
             });
           } else {
-            socketRef.current?.emit('send-direct-message', {
+            socketRef.current?.emit('send-direct-message', { id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2,7),
               recipientId: currentChat.id,
               type: 'audio',
               content: data.url
@@ -5252,7 +5272,9 @@ export default function App() {
                     {messages.map((msg, i) => {
                   const isOutgoing = msg.senderId === user?.id;
                   const showAvatar = i === 0 || messages[i - 1].senderId !== msg.senderId;
-                  const sender = onlineUsers.find(u => u.id === msg.senderId);
+                  const sender = onlineUsers.find(u => u.id === msg.senderId) || registeredUsers.find(u => u.id === msg.senderId);
+                  const showTimestamp = i === messages.length - 1 || messages[i + 1]?.senderId !== msg.senderId || 
+                    (new Date(messages[i + 1]?.createdAt || messages[i + 1]?.timestamp) - new Date(msg.createdAt || msg.timestamp)) > 60000;
                   const displayTime = msg.timestamp || msg.createdAt || null;
                   const displayText = msg.text || (msg.content && (msg.type === 'text' || !msg.type || !['image','audio','video','image_view_once'].includes(msg.type)) ? msg.content : '') || '';
                   const isMedia = (msg.type === 'image' || msg.type === 'audio' || msg.type === 'video' || msg.type === 'image_view_once' || msg.mediaType);
@@ -5271,10 +5293,10 @@ export default function App() {
                               style={{ width: '32px', height: '32px', fontSize: '0.8rem', cursor: 'pointer', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', ...glow.style }}
                               onClick={() => handleUserClick(msg.senderId, msg.senderNickname)}
                             >
-                              {sender?.avatar && token ? (
+                              {sender?.avatar ? (
                                 <img src={sender.avatar} alt={msg.senderNickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               ) : (
-                                <div style={{ fontSize: '0.8rem' }}>👤</div>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fff' }}>{(msg.senderNickname || '?')[0].toUpperCase()}</span>
                               )}
                             </div>
                           );

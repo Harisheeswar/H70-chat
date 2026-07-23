@@ -861,9 +861,11 @@ io.on('connection', async (socket) => {
     }
 
     // Update dm-contacts for both parties so DM list updates live
-    socket.emit('dm-contacts', getDmContactsWithProfiles(user.id));
+    const senderContacts = await getDmContactsWithProfiles(user.id);
+    socket.emit('dm-contacts', senderContacts);
     if (recipientSocketId) {
-      io.to(recipientSocketId).emit('dm-contacts', getDmContactsWithProfiles(recipientId));
+      const recipientContacts = await getDmContactsWithProfiles(recipientId);
+      io.to(recipientSocketId).emit('dm-contacts', recipientContacts);
     }
   });
 
