@@ -1228,6 +1228,7 @@ input, button, textarea {
   border: 1px solid rgba(255, 255, 255, 0.2);
   object-fit: cover;
   background: #111;
+  /* No mirror — show real direction */
 }
 
 .voice-call-only-panel {

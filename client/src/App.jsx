@@ -2336,7 +2336,15 @@ export default function App() {
     setCapturedPhotoBlob(null);
     setCapturedPhotoUrl(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 60, max: 90 },
+          facingMode: 'user'
+        },
+        audio: false
+      });
       webcamStreamRef.current = stream;
       
       // Initialize clmtrackr
@@ -2400,21 +2408,16 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, width, height);
 
-    // Draw video frame and AR overlay under the SAME mirror transform so
-    // filter positions (from the tracker, which reads the raw unmirrored
-    // video) line up with what's actually drawn on screen. Previously the
-    // video was drawn unmirrored while the overlay was drawn mirrored,
-    // so filters rendered offset from the face.
+    // Draw video frame UNMIRRORED — real direction (like a back camera)
     ctx.save();
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, width, height);
 
     // Get tracker landmarks and draw AR overlay
+    // AR overlay coords from clmtrackr are in raw video space (unmirrored)
+    // so they align correctly with the unmirrored draw above
     if (webcamTrackerRef.current) {
       const positions = webcamTrackerRef.current.getCurrentPosition();
       if (positions) {
-        // We skip drawAROverlay if it's the 3D filter, since WebGL handles it
         if (selectedWebcamARFilterRef.current !== 'anime3d') {
           drawAROverlay(ctx, positions, selectedWebcamARFilterRef.current);
         }
@@ -2932,7 +2935,19 @@ export default function App() {
   const startCall = async (isVideo) => {
     if (!currentChat || currentChat.type !== 'dm') return;
 
-    const constraints = { audio: true, video: isVideo };
+    const constraints = {
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 48000
+      },
+      video: isVideo ? {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 60, max: 90 },
+        facingMode: 'user'
+      } : false
+    };
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setLocalStream(stream);
@@ -2989,7 +3004,19 @@ export default function App() {
   const acceptCall = async () => {
     if (!callState || !callState.offer) return;
 
-    const constraints = { audio: true, video: callState.isVideo };
+    const constraints = {
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 48000
+      },
+      video: callState.isVideo ? {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 60, max: 90 },
+        facingMode: 'user'
+      } : false
+    };
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setLocalStream(stream);
