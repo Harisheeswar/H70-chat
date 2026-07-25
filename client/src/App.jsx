@@ -566,9 +566,13 @@ export default function App() {
   }, [rooms]);
 
   const onlineUsersRef = useRef(onlineUsers);
+  const registeredUsersRef = useRef(registeredUsers);
   useEffect(() => {
     onlineUsersRef.current = onlineUsers;
   }, [onlineUsers]);
+  useEffect(() => {
+    registeredUsersRef.current = registeredUsers;
+  }, [registeredUsers]);
 
   const playAlertSound = () => {
     if (userRef.current?.notificationsEnabled === false) return;
@@ -940,7 +944,10 @@ export default function App() {
     });
 
     socket.on('room-history', ({ roomId, messages: history }) => {
-      setMessages(history);
+      const currChat = currentChatRef.current;
+      if (currChat && currChat.type === 'room' && currChat.id === roomId) {
+        setMessages(history || []);
+      }
     });
 
     socket.on('room-message', (msg) => {
@@ -990,29 +997,48 @@ export default function App() {
     socket.on('direct-message', (msg) => {
       const currChat = currentChatRef.current;
       const currUser = userRef.current;
-      const chatKey = [currUser?.id, msg.senderId === currUser?.id ? msg.recipientId : msg.senderId].sort().join('-');
+      if (!currUser) return;
 
-      if (currChat && currChat.type === 'dm' && (currChat.id === msg.senderId || currChat.id === msg.recipientId)) {
+      // The "other person" in this DM
+      const otherId = msg.senderId === currUser.id ? msg.recipientId : msg.senderId;
+      const isCurrentChat = currChat && currChat.type === 'dm' && currChat.id === otherId;
+
+      if (isCurrentChat) {
         setMessages(prev => {
+          // Dedup by id — handles both optimistic adds and server echoes
           if (prev.some(m => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
-        if (msg.senderId !== currUser?.id) {
+        if (msg.senderId !== currUser.id) {
+          const chatKey = [currUser.id, msg.senderId].sort().join('-');
           socketRef.current?.emit('mark-message-read', { chatKey });
         }
       } else {
-        if (msg.senderId !== currUser?.id) {
+        // Notification for messages from other people in other chats
+        if (msg.senderId !== currUser.id) {
           setUnreadCounts(prev => ({
             ...prev,
             [msg.senderId]: (prev[msg.senderId] || 0) + 1
           }));
           playAlertSound();
+          // Toast notification
+          const sender = onlineUsersRef?.current?.find(u => u.id === msg.senderId) || 
+                         registeredUsersRef?.current?.find(u => u.id === msg.senderId);
+          if (sender) {
+            setActiveToast({
+              title: sender.nickname,
+              content: msg.type === 'text' ? msg.content : '📷 Sent media'
+            });
+          }
         }
       }
     });
 
     socket.on('direct-history', ({ recipientId, messages: history }) => {
-      setMessages(history);
+      const currChat = currentChatRef.current;
+      if (currChat && currChat.type === 'dm' && currChat.id === recipientId) {
+        setMessages(history || []);
+      }
     });
 
     socket.on('direct-message-updated-live', ({ msgId, content }) => {

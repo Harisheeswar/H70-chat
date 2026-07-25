@@ -677,7 +677,7 @@ io.on('connection', async (socket) => {
   socket.on('get-dm-contacts', async () => {
     const user = activeSockets.get(socket.id);
     if (!user || user.isGuest) return socket.emit('dm-contacts', []);
-    const contacts = getDmContactsWithProfiles(user.id);
+    const contacts = await getDmContactsWithProfiles(user.id);
     socket.emit('dm-contacts', contacts);
   });
 
