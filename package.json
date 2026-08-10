@@ -1,14 +1,15 @@
 {
   "name": "h70-root",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Root package for H70 Chat Platform",
+  "private": true,
   "scripts": {
     "install-all": "npm install --prefix server && npm install --prefix client",
     "server": "npm run dev --prefix server",
     "client": "npm run dev --prefix client",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "build": "npm run install-all && npm run build --prefix client",
-    "start": "node server/index.js",
+    "start": "npm start --prefix server",
     "postinstall": "node -e \"if (!process.env.H70_BUILDING) { process.env.H70_BUILDING='true'; require('child_process').execSync('npm run build', {stdio: 'inherit'}); }\""
   },
   "dependencies": {
