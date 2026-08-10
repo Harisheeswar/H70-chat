@@ -1,12 +1,12 @@
 {
   "name": "h70-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Server for H70 Chat Platform",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon --ignore db.json --ignore uploads/ index.js"
+    "start": "node repair.js",
+    "dev": "nodemon --ignore db.json --ignore uploads/ repair.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
