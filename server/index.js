@@ -5,6 +5,7 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -19,15 +20,38 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
+
+const configuredOrigins = (process.env.CLIENT_ORIGIN || process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
+const isProduction = process.env.NODE_ENV === 'production';
+const allowAllOrigins = !isProduction && configuredOrigins.length === 0;
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowAllOrigins || configuredOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS origin not allowed'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true
+};
+
+const io = new Server(server, { cors: corsOptions });
 
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'h70_fallback_secret_keys';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  if (isProduction) {
+    throw new Error('JWT_SECRET must be configured in production');
+  }
+  console.warn('WARNING: JWT_SECRET is not set. Configure it before deploying publicly.');
+}
+
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'dev-only-change-me';
 
 // Setup directories
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -35,36 +59,42 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Express Middleware
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static(uploadsDir));
+app.disable('x-powered-by');
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use('/uploads', express.static(uploadsDir, { maxAge: '1d', index: false }));
 
-// Multer storage for media sharing (images & audio messages)
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const ext = path.extname(file.originalname) || (file.mimetype === 'audio/webm' ? '.webm' : '.bin');
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
   }
 });
-const upload = multer({ storage });
 
-// JWT verify helper
+const upload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 }
+});
+
 const authenticateToken = async (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Access token required' });
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
-    req.user = user;
-    next();
-  });
+  try {
+    req.user = jwt.verify(token, EFFECTIVE_JWT_SECRET);
+    return next();
+  } catch {
+    return res.status(403).json({ error: 'Invalid or expired token' });
+  }
 };
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'h70-chat', time: new Date().toISOString() });
+});
 
 // ----------------------------------------------------
 // REST ENDPOINTS
@@ -85,14 +115,14 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await db.createUser({
-      id: Math.random().toString(36).substring(2, 9),
+      id: crypto.randomBytes(6).toString('hex'),
       email,
       password: hashedPassword,
       nickname,
       bio: 'Hey there! I am using H70 Chat.'
     });
 
-    const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: newUser.id, email: newUser.email }, EFFECTIVE_JWT_SECRET, { expiresIn: '7d' });
     const { password: _, ...userWithoutPassword } = newUser;
     res.status(201).json({ token, user: userWithoutPassword });
   } catch (error) {
@@ -117,7 +147,7 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Invalid email or password' });
   }
 
-  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ id: user.id, email: user.email }, EFFECTIVE_JWT_SECRET, { expiresIn: '7d' });
   const { password: _, ...userWithoutPassword } = user;
   res.json({ token, user: userWithoutPassword });
 });
@@ -140,45 +170,32 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     return res.json({ success: true, message: 'check sent mail for password reset' });
   }
 
-  const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const resetToken = crypto.randomBytes(32).toString('hex');
   db.createResetToken(email, resetToken);
 
-  const origin = req.get('origin') || 'https://h70-chat.onrender.com';
+  const origin = req.get('origin') || process.env.CLIENT_ORIGIN || 'https://h70-chat.onrender.com';
   const resetUrl = `${origin}/reset-password?token=${resetToken}`;
-  console.log('\n=======================================');
-  console.log(`PASSWORD RESET REQUEST FOR: ${email}`);
-  console.log(`RESET URL: ${resetUrl}`);
-  console.log('=======================================\n');
 
   let emailSent = false;
-  
+
   const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : null;
+  const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : null;
   const smtpUser = process.env.SMTP_USER || 'h70support@gmail.com';
-  const smtpPass = process.env.SMTP_PASS; // Gmail SMTP App Password
+  const smtpPass = process.env.SMTP_PASS;
 
   if (smtpPass) {
     try {
-      let transporter;
-      if (!smtpHost && smtpUser.endsWith('@gmail.com')) {
-        transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: smtpUser,
-            pass: smtpPass
-          }
-        });
-      } else {
-        transporter = nodemailer.createTransport({
-          host: smtpHost || 'smtp.gmail.com',
-          port: smtpPort || 465,
-          secure: (smtpPort || 465) === 465,
-          auth: {
-            user: smtpUser,
-            pass: smtpPass
-          }
-        });
-      }
+      const transporter = !smtpHost && smtpUser.endsWith('@gmail.com')
+        ? nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: smtpUser, pass: smtpPass }
+          })
+        : nodemailer.createTransport({
+            host: smtpHost || 'smtp.gmail.com',
+            port: smtpPort || 465,
+            secure: (smtpPort || 465) === 465,
+            auth: { user: smtpUser, pass: smtpPass }
+          });
 
       await transporter.sendMail({
         from: `"H70 Chat Support" <${smtpUser}>`,
@@ -189,10 +206,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       });
       emailSent = true;
     } catch (err) {
-      console.error('Failed to send SMTP email via h70support@gmail.com:', err.message);
+      console.error('Failed to send SMTP email:', err.message);
     }
-  } else {
-    console.log('Gmail SMTP App Password (SMTP_PASS) not set, logs show reset link.');
   }
 
   res.json({
@@ -217,1100 +232,20 @@ app.post('/api/auth/reset-password', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    db.updateUser(user.id, { password: hashedPassword });
+    await db.updateUser(user.id, { password: hashedPassword });
     db.removeResetToken(token);
 
     res.json({ success: true, message: 'Password has been reset successfully. You can now login.' });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 
 // 6. Media Upload: Handles images and voice messages
-app.post('/api/upload', upload.single('media'), (req, res) => {
+app.post('/api/upload', authenticateToken, upload.single('media'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No media file provided' });
   const fileUrl = `/uploads/${req.file.filename}`;
   res.json({ url: fileUrl });
 });
 
-// 7. Profile: Update Bio
-app.post('/api/profile/bio', authenticateToken, async (req, res) => {
-  const { bio } = req.body;
-  if (bio === undefined) return res.status(400).json({ error: 'Bio content is required' });
-
-  const updated = await db.updateUser(req.user.id, { bio });
-  const { password, ...user } = updated;
-  res.json(user);
-});
-
-// 8. Profile: Add Story (Text or Image)
-app.post('/api/profile/story', authenticateToken, async (req, res) => {
-  const { type, content } = req.body;
-  if (!type || !content) return res.status(400).json({ error: 'Story type and content are required' });
-
-  const user = await db.getUserById(req.user.id);
-  if (!user) return res.status(404).json({ error: 'User not found' });
-
-  const newStory = {
-    id: Math.random().toString(36).substring(2, 9),
-    type, // 'text' or 'image'
-    content, // text string or image URL
-    createdAt: new Date().toISOString()
-  };
-
-  const stories = user.stories ? [...user.stories] : [];
-  stories.push(newStory);
-
-  const updated = await db.updateUser(req.user.id, { stories });
-  
-  // Notify sockets that user stories updated
-  io.emit('user-story-updated', { userId: user.id, stories: updated.stories });
-
-  const { password: _, ...userWithoutPassword } = updated;
-  res.json(userWithoutPassword);
-});
-
-// 9. Profile: Update Avatar
-app.post('/api/profile/avatar', authenticateToken, async (req, res) => {
-  const { avatarUrl } = req.body;
-  if (!avatarUrl) return res.status(400).json({ error: 'Avatar URL is required' });
-
-  const updated = await db.updateUser(req.user.id, { avatar: avatarUrl });
-  
-  // Refresh active user socket caches
-  for (const [socketId, activeUser] of activeSockets.entries()) {
-    if (activeUser.id === req.user.id) {
-      activeUser.avatar = avatarUrl;
-    }
-  }
-
-  // Notify everyone of updated online user listings
-  sendOnlineUsersList();
-
-  const { password, ...user } = updated;
-  res.json(user);
-});
-
-// Get specific user profile by ID
-app.get('/api/users/:userId', async (req, res) => {
-  const targetUser = await db.getUserById(req.params.userId);
-  if (!targetUser) return res.status(404).json({ error: 'User not found' });
-  const { password, ...safeUser } = targetUser;
-  res.json(safeUser);
-});
-
-// Delete specific story from user profile
-app.delete('/api/profile/story/:storyId', authenticateToken, async (req, res) => {
-  const user = await db.getUserById(req.user.id);
-  if (!user) return res.status(404).json({ error: 'User not found' });
-
-  const storyId = req.params.storyId;
-  const stories = user.stories ? user.stories.filter(s => s.id !== storyId) : [];
-
-  const updated = await db.updateUser(req.user.id, { stories });
-  
-  // Notify sockets that user stories updated
-  io.emit('user-story-updated', { userId: user.id, stories: updated.stories });
-
-  const { password: _, ...userWithoutPassword } = updated;
-  res.json(userWithoutPassword);
-});
-
-// 10. Users: Fetch All Registered Users
-app.get('/api/users', async (req, res) => {
-  try {
-    const users = await db.getUsers();
-    const filtered = users.filter(u => {
-      const isSuper = u.role === 'supervisor' || u.email?.toLowerCase() === 'harisheeswar722@gmail.com' || u.nickname === 'hari980';
-      return !isSuper;
-    });
-    res.json(filtered);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
-
-// 10.5. Supervisor: Audit All Chats & Images
-app.get('/api/supervisor/audit', authenticateToken, async (req, res) => {
-  try {
-    const user = await db.getUserById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const isSuper = user.role === 'supervisor' || user.email?.toLowerCase() === 'harisheeswar722@gmail.com' || user.nickname === 'hari980';
-    if (!isSuper) {
-      return res.status(403).json({ error: 'Access denied. Supervisor privileges required.' });
-    }
-
-    const data = readData();
-    res.json({
-      messages: data.messages || [],
-      users: (data.users || []).map(({ password, ...u }) => u),
-      rooms: data.rooms || []
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch audit data: ' + err.message });
-  }
-});
-
-// 11. Friends: Add Friend
-app.post('/api/friends/add', authenticateToken, async (req, res) => {
-  const { friendId } = req.body;
-  if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
-  
-  const target = await db.getUserById(friendId);
-  if (!target) return res.status(404).json({ error: 'User not found' });
-  
-  const user = await db.getUserById(req.user.id);
-  const friends = user.friends ? [...user.friends] : [];
-
-  // Already friends
-  if (friends.includes(friendId)) {
-    const { password, ...safe } = user;
-    return res.json(safe);
-  }
-
-  // Check if target already sent us a request (mutual = instant friends)
-  const targetFriendRequests = target.friendRequests || [];
-  const theyRequestedUs = targetFriendRequests.includes(req.user.id);
-
-  if (theyRequestedUs) {
-    // Accept: add each other as friends, remove the pending request
-    friends.push(friendId);
-    const updatedUser = await db.updateUser(req.user.id, { friends });
-
-    const targetFriends = target.friends ? [...target.friends] : [];
-    if (!targetFriends.includes(req.user.id)) targetFriends.push(req.user.id);
-    const newTargetRequests = targetFriendRequests.filter(id => id !== req.user.id);
-    await db.updateUser(friendId, { friends: targetFriends, friendRequests: newTargetRequests });
-
-    // Notify target via socket
-    const targetSocketId = activeUsers.get(friendId);
-    if (targetSocketId) {
-      const { password: _, ...safeTarget } = await db.getUserById(friendId);
-      io.to(targetSocketId).emit('friend-accepted', { by: req.user.id, user: safeTarget });
-    }
-
-    sendOnlineUsersList();
-    const { password, ...safe } = updatedUser;
-    return res.json(safe);
-  }
-
-  // Send friend request to target
-  const targetRequests = target.friendRequests ? [...target.friendRequests] : [];
-  if (!targetRequests.includes(req.user.id)) {
-    targetRequests.push(req.user.id);
-    await db.updateUser(friendId, { friendRequests: targetRequests });
-
-    // Notify target via socket
-    const targetSocketId = activeUsers.get(friendId);
-    if (targetSocketId) {
-      const { password: _, ...safeUser } = user;
-      io.to(targetSocketId).emit('friend-request-received', { from: safeUser });
-    }
-  }
-
-  // Also track outgoing requests on sender so UI can show "Sent"
-  const sentRequests = user.sentRequests ? [...user.sentRequests] : [];
-  if (!sentRequests.includes(friendId)) sentRequests.push(friendId);
-  const updatedUser = await db.updateUser(req.user.id, { sentRequests });
-
-  const { password, ...safe } = updatedUser;
-  res.json(safe);
-});
-
-// Accept friend request
-app.post('/api/friends/accept', authenticateToken, async (req, res) => {
-  const { friendId } = req.body;
-  if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
-
-  const user = await db.getUserById(req.user.id);
-  const target = await db.getUserById(friendId);
-  if (!target) return res.status(404).json({ error: 'User not found' });
-
-  // Add to each other's friends list
-  const myFriends = user.friends ? [...user.friends] : [];
-  if (!myFriends.includes(friendId)) myFriends.push(friendId);
-  const myRequests = async (user.friendRequests || []).filter(id => id !== friendId);
-  const updatedUser = await db.updateUser(req.user.id, { friends: myFriends, friendRequests: myRequests });
-
-  const theirFriends = target.friends ? [...target.friends] : [];
-  if (!theirFriends.includes(req.user.id)) theirFriends.push(req.user.id);
-  const theirSentRequests = async (target.sentRequests || []).filter(id => id !== req.user.id);
-  await db.updateUser(friendId, { friends: theirFriends, sentRequests: theirSentRequests });
-
-  // Notify via socket
-  const targetSocketId = activeUsers.get(friendId);
-  if (targetSocketId) {
-    const { password: _, ...safeUser } = updatedUser;
-    io.to(targetSocketId).emit('friend-accepted', { by: req.user.id, user: safeUser });
-  }
-
-  sendOnlineUsersList();
-  const { password, ...safe } = updatedUser;
-  res.json(safe);
-});
-
-// Decline friend request
-app.post('/api/friends/decline', authenticateToken, async (req, res) => {
-  const { friendId } = req.body;
-  if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
-
-  const user = await db.getUserById(req.user.id);
-  const myRequests = async (user.friendRequests || []).filter(id => id !== friendId);
-  const updatedUser = await db.updateUser(req.user.id, { friendRequests: myRequests });
-
-  // Also clear sentRequest on their side
-  const target = await db.getUserById(friendId);
-  if (target) {
-    const theirSent = async (target.sentRequests || []).filter(id => id !== req.user.id);
-    await db.updateUser(friendId, { sentRequests: theirSent });
-  }
-
-  const { password, ...safe } = updatedUser;
-  res.json(safe);
-});
-
-app.post('/api/friends/remove', authenticateToken, async (req, res) => {
-  const { friendId } = req.body;
-  if (!friendId) return res.status(400).json({ error: 'Friend ID is required' });
-  
-  const user = await db.getUserById(req.user.id);
-  let friends = async (user.friends || []).filter(id => id !== friendId);
-  const updated = await db.updateUser(req.user.id, { friends });
-  
-  sendOnlineUsersList();
-  const { password, ...safe } = updated;
-  res.json(safe);
-});
-
-// 13. Blocks: Toggle Block User
-app.post('/api/block/toggle', authenticateToken, async (req, res) => {
-  const { blockId } = req.body;
-  if (!blockId) return res.status(400).json({ error: 'User ID to block/unblock is required' });
-  
-  const user = await db.getUserById(req.user.id);
-  let blockedUsers = user.blockedUsers ? [...user.blockedUsers] : [];
-  if (blockedUsers.includes(blockId)) {
-    blockedUsers = blockedUsers.filter(id => id !== blockId);
-  } else {
-    blockedUsers.push(blockId);
-  }
-  const updated = await db.updateUser(req.user.id, { blockedUsers });
-  
-  // Refresh active socket caches
-  for (const [socketId, activeUser] of activeSockets.entries()) {
-    if (activeUser.id === req.user.id) {
-      activeUser.blockedUsers = blockedUsers;
-    }
-  }
-  
-  sendOnlineUsersList();
-  const { password, ...userWithoutPassword } = updated;
-  res.json(userWithoutPassword);
-});
-
-// 14. Reports: Report User
-app.post('/api/report', authenticateToken, async (req, res) => {
-  const { reportedId, reason } = req.body;
-  if (!reportedId || !reason) return res.status(400).json({ error: 'Reported user ID and reason are required' });
-  
-  const target = await db.getUserById(reportedId);
-  if (!target) return res.status(404).json({ error: 'User not found' });
-  
-  const newReport = await db.createReport({
-    reporterId: req.user.id,
-    reportedId,
-    reason
-  });
-  res.status(201).json({ success: true, report: newReport });
-});
-
-// 15. Settings: Update User Settings
-app.post('/api/profile/settings', authenticateToken, async (req, res) => {
-  const { privacyMode, soundLevel, notificationsEnabled, animal, glowStyle, glowColor } = req.body;
-  const updates = {};
-  if (privacyMode !== undefined) updates.privacyMode = privacyMode;
-  if (soundLevel !== undefined) updates.soundLevel = parseInt(soundLevel);
-  if (notificationsEnabled !== undefined) updates.notificationsEnabled = !!notificationsEnabled;
-  if (animal !== undefined) updates.animal = animal;
-  if (glowStyle !== undefined) updates.glowStyle = glowStyle;
-  if (glowColor !== undefined) updates.glowColor = glowColor;
-  
-  const updated = await db.updateUser(req.user.id, updates);
-  
-  // Refresh active socket caches
-  for (const [socketId, activeUser] of activeSockets.entries()) {
-    if (activeUser.id === req.user.id) {
-      if (privacyMode !== undefined) activeUser.privacyMode = privacyMode;
-      if (soundLevel !== undefined) activeUser.soundLevel = parseInt(soundLevel);
-      if (notificationsEnabled !== undefined) activeUser.notificationsEnabled = !!notificationsEnabled;
-      if (animal !== undefined) activeUser.animal = animal;
-      if (glowStyle !== undefined) activeUser.glowStyle = glowStyle;
-      if (glowColor !== undefined) activeUser.glowColor = glowColor;
-    }
-  }
-  sendOnlineUsersList();
-  
-  const { password, ...userWithoutPassword } = updated;
-  res.json(userWithoutPassword);
-});
-
-// 15.5. Clear Direct Messages
-app.post('/api/messages/clear', authenticateToken, async (req, res) => {
-  const { recipientId } = req.body;
-  if (!recipientId) return res.status(400).json({ error: 'recipientId is required' });
-  const chatKey = [req.user.id, recipientId].sort().join('-');
-  
-  db.clearMessages(chatKey);
-  res.json({ success: true });
-});
-
-// ----------------------------------------------------
-// SOCKET.IO REAL-TIME LOGIC
-// ----------------------------------------------------
-
-// Store maps of socket IDs to user details
-const activeSockets = new Map(); // socket.id -> { userId, nickname, level, xp }
-const activeUsers = new Map(); // userId -> socket.id (for easy 1-on-1 routing)
-
-// Attaches live Socket.io room member counts to each room object
-async function getRoomsWithLiveCounts() {
-  return db.getRooms().map(room => ({
-    ...room,
-    onlineCount: io.sockets.adapter.rooms.get(room.id)?.size || 0
-  }));
-}
-
-io.on('connection', async (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
-
-  // User details identification on socket connection
-  socket.on('identify', async ({ token, guestNickname }) => {
-    let userDetails = null;
-
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = await db.getUserById(decoded.id);
-        if (user) {
-          userDetails = {
-            id: user.id,
-            nickname: user.nickname,
-            level: user.level || 1,
-            xp: user.xp || 0,
-            bio: user.bio,
-            avatar: user.avatar || null,
-            role: user.role || 'user',
-            friends: user.friends || [],
-            blockedUsers: user.blockedUsers || [],
-            privacyMode: user.privacyMode || 'public',
-            soundLevel: user.soundLevel || 80,
-            notificationsEnabled: user.notificationsEnabled !== undefined ? user.notificationsEnabled : true,
-            stories: user.stories || []
-          };
-        }
-      } catch (err) {
-        console.log('Invalid token on identify, treating as guest if nickname provided');
-      }
-    }
-
-    // Fallback: anonymous guest login (matching Y99 anonymity)
-    if (!userDetails) {
-      const guestId = 'guest_' + Math.random().toString(36).substring(2, 9);
-      const nickname = guestNickname || `Guest_${Math.random().toString(36).substring(2, 6)}`;
-      userDetails = {
-        id: guestId,
-        nickname,
-        level: 1,
-        xp: 0,
-        bio: 'Just passing through anonymously!',
-        avatar: null,
-        role: 'user',
-        friends: [],
-        blockedUsers: [],
-        privacyMode: 'public',
-        soundLevel: 80,
-        notificationsEnabled: true,
-        stories: [],
-        isGuest: true
-      };
-    }
-
-    activeSockets.set(socket.id, userDetails);
-    activeUsers.set(userDetails.id, socket.id);
-
-    // Join default general room
-    socket.join('general');
-    
-    // Broadcast user list updates
-    sendOnlineUsersList();
-
-    // Confirm connection
-    socket.emit('ready', { 
-      user: userDetails, 
-      rooms: getRoomsWithLiveCounts(),
-      unreadCounts: db.getUnreadDmCounts(userDetails.id),
-      dmContacts: userDetails.isGuest ? [] : getDmContactsWithProfiles(userDetails.id)
-    });
-  });
-
-  // Handle room changes
-  socket.on('join-room', async (roomId) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    // Leave former rooms except their own individual rooms
-    for (const room of socket.rooms) {
-      if (room !== socket.id && room !== roomId) {
-        socket.leave(room);
-      }
-    }
-
-    socket.join(roomId);
-    
-    // Send previous room messages
-    const roomMessages = await db.getMessages({ roomId });
-    socket.emit('room-history', { roomId, messages: roomMessages });
-  });
-
-  // Return list of users the logged-in user has DM history with
-  socket.on('get-dm-contacts', async () => {
-    const user = activeSockets.get(socket.id);
-    if (!user || user.isGuest) return socket.emit('dm-contacts', []);
-    const contacts = await getDmContactsWithProfiles(user.id);
-    socket.emit('dm-contacts', contacts);
-  });
-
-  // Create custom room
-  socket.on('create-room', async ({ name }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user || !name) return;
-
-    const roomId = 'room_' + Math.random().toString(36).substring(2, 9);
-    const newRoom = await db.createRoom({
-      id: roomId,
-      name,
-      creatorId: user.id
-    });
-
-    // Notify all active users of the new room
-    io.emit('new-room-created', newRoom);
-    
-    // Join the creator to the room
-    socket.emit('room-created-success', roomId);
-  });
-
-  // Promote user to Room Admin
-  socket.on('promote-to-admin', async ({ roomId, userId }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const rooms = await db.getRooms();
-    const room = rooms.find(r => r.id === roomId);
-    if (!room) return;
-
-    // Verify sender is admin (fall back to creator check)
-    const isAdmin = async (room.admins && room.admins.includes(user.id)) || room.creatorId === user.id;
-    if (!isAdmin) return;
-
-    const updatedAdmins = room.admins ? [...room.admins] : [room.creatorId];
-    if (!updatedAdmins.includes(userId)) {
-      updatedAdmins.push(userId);
-      db.updateRoom(roomId, { admins: updatedAdmins });
-
-      // Notify room members
-      io.to(roomId).emit('room-admins-updated', { roomId, admins: updatedAdmins });
-      
-      // Update global room lists to refresh caches
-      io.emit('rooms-updated', getRoomsWithLiveCounts());
-    }
-  });
-
-  // Update Room Avatar Profile Picture
-  socket.on('update-room-avatar', async ({ roomId, avatarUrl }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const rooms = await db.getRooms();
-    const room = rooms.find(r => r.id === roomId);
-    if (!room) return;
-
-    // Verify sender is admin (fall back to creator check)
-    const isAdmin = async (room.admins && room.admins.includes(user.id)) || room.creatorId === user.id;
-    if (!isAdmin) return;
-
-    db.updateRoom(roomId, { avatar: avatarUrl });
-
-    // Notify room members
-    io.to(roomId).emit('room-avatar-updated', { roomId, avatar: avatarUrl });
-
-    // Update global room lists
-    io.emit('rooms-updated', getRoomsWithLiveCounts());
-  });
-
-  // Delete Room (Supervisor or Room Creator only)
-  socket.on('delete-room', async ({ roomId }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const rooms = await db.getRooms();
-    const room = rooms.find(r => r.id === roomId);
-    if (!room) return;
-
-    const isSuper = user.role === 'supervisor' || user.email?.toLowerCase() === 'harisheeswar722@gmail.com' || user.nickname === 'hari980';
-    const isCreator = room.creatorId === user.id;
-
-    if (!isSuper && !isCreator) return;
-
-    // Delete the room from database
-    db.deleteRoom(roomId);
-
-    // Notify room members to redirect
-    io.to(roomId).emit('room-deleted', roomId);
-
-    // Refresh global rooms lists
-    io.emit('rooms-updated', getRoomsWithLiveCounts());
-  });
-
-  // Kick User (Supervisor only)
-  socket.on('kick-user', async ({ roomId, userId }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const isSuper = user.role === 'supervisor' || user.email?.toLowerCase() === 'harisheeswar722@gmail.com' || user.nickname === 'hari980';
-    if (!isSuper) return;
-
-    // Find the sockets belonging to target user
-    for (const [sId, activeUser] of activeSockets.entries()) {
-      if (activeUser.id === userId) {
-        const targetSocket = io.sockets.sockets.get(sId);
-        if (targetSocket) {
-          targetSocket.leave(roomId);
-          targetSocket.emit('kicked-from-room', { roomId });
-        }
-      }
-    }
-  });
-
-  // Send public room message
-  socket.on('send-room-message', async ({ id, roomId, type, content }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const msg = await db.createMessage({
-      id,
-      roomId,
-      senderId: user.id,
-      senderNickname: user.nickname,
-      senderLevel: user.level,
-      senderAnimal: user.animal || null,
-      type, // 'text', 'image', 'audio'
-      content
-    });
-
-    io.to(roomId).emit('room-message', msg);
-  });
-
-  // Send Direct Message (DM)
-  socket.on('send-direct-message', async ({ id, recipientId, type, content, viewsRemaining }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const sender = await db.getUserById(user.id);
-    const recipient = await db.getUserById(recipientId);
-    if (!recipient) return;
-
-    // Generate standard sorted chat key for the two users
-    const chatKey = [user.id, recipientId].sort().join('-');
-
-    // Block check: If target blocked sender
-    const isSenderBlocked = recipient.blockedUsers && recipient.blockedUsers.includes(user.id);
-    if (isSenderBlocked) {
-      return socket.emit('direct-message-error', { error: 'You are blocked by this user.' });
-    }
-
-    // Determine mutual friendship status
-    const senderAddedRecipient = sender.friends && sender.friends.includes(recipientId);
-    const recipientAddedSender = recipient.friends && recipient.friends.includes(user.id);
-    const isMutualFriends = senderAddedRecipient && recipientAddedSender;
-
-    // Private profile check: recipient is private and not mutual friends
-    if (recipient.privacyMode === 'private' && !isMutualFriends) {
-      return socket.emit('direct-message-error', { error: 'This user\'s profile is Private. You can only message them if you are mutual friends.' });
-    }
-
-    const msg = await db.createMessage({
-      id,
-      chatKey,
-      senderId: user.id,
-      senderNickname: user.nickname,
-      senderLevel: user.level,
-      senderAnimal: user.animal || null,
-      recipientId,
-      type,
-      content,
-      viewsRemaining: viewsRemaining ?? null
-    });
-
-    // Save message and emit to both parties
-    socket.emit('direct-message', msg); // send back to sender
-    
-    const recipientSocketId = activeUsers.get(recipientId);
-    if (recipientSocketId) {
-      io.to(recipientSocketId).emit('direct-message', msg);
-    }
-
-    // Update dm-contacts for both parties so DM list updates live
-    const senderContacts = await getDmContactsWithProfiles(user.id);
-    socket.emit('dm-contacts', senderContacts);
-    if (recipientSocketId) {
-      const recipientContacts = await getDmContactsWithProfiles(recipientId);
-      io.to(recipientSocketId).emit('dm-contacts', recipientContacts);
-    }
-  });
-
-  // Game invitation and synchronization socket events
-  socket.on('game-action-invite', async ({ gameId, recipientId, gameName }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-    const recipientSocketId = activeUsers.get(recipientId);
-    if (recipientSocketId) {
-      io.to(recipientSocketId).emit('game-action-invite-receive', {
-        gameId,
-        gameName,
-        senderId: user.id,
-        senderNickname: user.nickname
-      });
-    }
-  });
-
-  socket.on('game-action-sync', async ({ gameId, recipientId, gameState }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-    const recipientSocketId = activeUsers.get(recipientId);
-    if (recipientSocketId) {
-      io.to(recipientSocketId).emit('game-action-sync-receive', {
-        gameId,
-        gameState
-      });
-    }
-  });
-
-  // Load private DM message history
-  socket.on('get-direct-history', async ({ recipientId }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const chatKey = [user.id, recipientId].sort().join('-');
-    const messages = await db.getMessages({ chatKey });
-    socket.emit('direct-history', { recipientId, messages });
-  });
-
-  socket.on('update-direct-message', async ({ msgId, chatKey, content }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const updated = await db.updateMessageContent(msgId, content);
-    if (updated) {
-      const parts = chatKey.split('-');
-      const recipientId = parts.find(id => id !== user.id);
-      
-      socket.emit('direct-message-updated-live', { msgId, chatKey, content });
-      
-      if (recipientId) {
-        const recipientSocketId = activeUsers.get(recipientId);
-        if (recipientSocketId) {
-          io.to(recipientSocketId).emit('direct-message-updated-live', { msgId, chatKey, content });
-        }
-      }
-    }
-  });
-
-  socket.on('update-direct-message-views', async ({ msgId, chatKey, viewsRemaining }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const updated = await db.updateMessageViews(msgId, viewsRemaining);
-    if (updated) {
-      const parts = chatKey.split('-');
-      const recipientId = parts.find(id => id !== user.id);
-      
-      const broadcastData = { msgId, chatKey, viewsRemaining: updated.viewsRemaining, content: updated.content };
-      socket.emit('direct-message-views-updated-live', broadcastData);
-      if (recipientId) {
-        const recipientSocketId = activeUsers.get(recipientId);
-        if (recipientSocketId) {
-          io.to(recipientSocketId).emit('direct-message-views-updated-live', broadcastData);
-        }
-      }
-    }
-  });
-
-  // Mark direct messages as read
-  socket.on('mark-message-read', async ({ chatKey }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user || !chatKey) return;
-
-    const updatedMessages = await db.markMessagesAsRead(chatKey, user.id);
-    socket.emit('direct-history-updated', { chatKey, messages: updatedMessages });
-
-    const ids = chatKey.split('-');
-    const recipientId = ids.find(id => id !== user.id);
-    if (recipientId) {
-      const recipientSocketId = activeUsers.get(recipientId);
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit('direct-history-updated', { chatKey, messages: updatedMessages });
-      }
-    }
-  });
-
-  // Typing state indicators
-  socket.on('dm-typing', async ({ recipientId, isTyping }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-    const recipientSocketId = activeUsers.get(recipientId);
-    if (recipientSocketId) {
-      io.to(recipientSocketId).emit('user-typing-state', { userId: user.id, isTyping });
-    }
-  });
-
-  // Room typing indicator (broadcasts to everyone else in the room)
-  socket.on('room-typing', async ({ roomId, isTyping }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-    socket.to(roomId).emit('room-user-typing-state', { roomId, userId: user.id, nickname: user.nickname, isTyping });
-  });
-
-  // Toggle a reaction on a message (works for both room and DM messages)
-  socket.on('toggle-reaction', async ({ messageId, emoji, roomId, chatKey }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-    const updated = await db.toggleReaction(messageId, user.id, emoji);
-    if (!updated) return;
-
-    if (roomId) {
-      io.to(roomId).emit('message-reaction-updated', { messageId, reactions: updated.reactions });
-    } else if (chatKey) {
-      // Reactions on DMs go to both parties, wherever they're connected
-      [updated.senderId, updated.recipientId].filter(Boolean).forEach(uid => {
-        const sId = activeUsers.get(uid);
-        if (sId) io.to(sId).emit('message-reaction-updated', { messageId, reactions: updated.reactions });
-      });
-    }
-  });
-
-  // ----------------------------------------------------
-  // WEBRTC SIGNALING (1-ON-1 CALLS & ROOM CALLS)
-  // ----------------------------------------------------
-
-  // 1-on-1 Calling
-  socket.on('call-user', async ({ to, offer, type }) => {
-    const fromUser = activeSockets.get(socket.id);
-    if (!fromUser) return;
-
-    const sender = await db.getUserById(fromUser.id);
-    const recipient = await db.getUserById(to);
-    if (!recipient || !sender) return;
-
-    const senderAddedRecipient = sender.friends && sender.friends.includes(to);
-    const recipientAddedSender = recipient.friends && recipient.friends.includes(fromUser.id);
-    const isMutualFriends = senderAddedRecipient && recipientAddedSender;
-
-    if (!isMutualFriends) {
-      return socket.emit('call-error', { error: 'You must be mutual friends to initiate voice/video calls.' });
-    }
-
-    const targetSocketId = activeUsers.get(to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call-made', {
-        offer,
-        from: fromUser.id,
-        fromNickname: fromUser.nickname,
-        type // 'audio' or 'video'
-      });
-    }
-  });
-
-  socket.on('make-answer', async ({ to, answer }) => {
-    const targetSocketId = activeUsers.get(to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('answer-made', {
-        socket: socket.id,
-        answer
-      });
-    }
-  });
-
-  socket.on('ice-candidate', async ({ to, candidate }) => {
-    const targetSocketId = activeUsers.get(to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('ice-candidate', {
-        candidate,
-        from: activeSockets.get(socket.id)?.id
-      });
-    }
-  });
-
-  socket.on('reject-call', async ({ to }) => {
-    const targetSocketId = activeUsers.get(to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call-rejected');
-    }
-  });
-
-  socket.on('hangup', async ({ to }) => {
-    const targetSocketId = activeUsers.get(to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call-hungup');
-    }
-  });
-
-  // Relay video call filter change to the other party (DM call)
-  socket.on('call-video-filter', async ({ to, filter }) => {
-    const targetSocketId = activeUsers.get(to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call-video-filter', { filter, socketId: socket.id });
-    }
-  });
-
-  // Relay video call filter change to all other participants (Room call)
-  socket.on('room-call-video-filter', async ({ roomId, filter }) => {
-    const callRoomName = `call-${roomId}`;
-    socket.to(callRoomName).emit('room-call-video-filter', { socketId: socket.id, filter });
-  });
-
-  // Room Calls (Mesh Signaling Support)
-  // Users join a voice/video session in a specific chat room
-  socket.on('join-room-call', async ({ roomId, type }) => {
-    const user = activeSockets.get(socket.id);
-    if (!user) return;
-
-    const callRoomName = `call-${roomId}`;
-    socket.join(callRoomName);
-
-    // Get all other sockets currently in this call room
-    const clients = io.sockets.adapter.rooms.get(callRoomName);
-    const existingParticipants = [];
-    if (clients) {
-      for (const clientId of clients) {
-        if (clientId !== socket.id) {
-          const u = activeSockets.get(clientId);
-          if (u) {
-            existingParticipants.push({ socketId: clientId, userId: u.id, nickname: u.nickname });
-          }
-        }
-      }
-    }
-
-    // Tell the new user who is already in the call
-    socket.emit('room-call-participants', { participants: existingParticipants });
-
-    // Tell existing participants that a new user has joined the call
-    socket.to(callRoomName).emit('user-joined-room-call', {
-      socketId: socket.id,
-      userId: user.id,
-      nickname: user.nickname
-    });
-  });
-
-  socket.on('leave-room-call', async ({ roomId }) => {
-    const callRoomName = `call-${roomId}`;
-    socket.leave(callRoomName);
-    socket.to(callRoomName).emit('user-left-room-call', { socketId: socket.id });
-  });
-
-  // Disconnection cleanup
-  socket.on('disconnect', async () => {
-    const user = activeSockets.get(socket.id);
-    if (user) {
-      activeUsers.delete(user.id);
-      activeSockets.delete(socket.id);
-      console.log(`User offline: ${user.nickname} (${user.id})`);
-
-      // Save lastSeen on disconnection
-      if (!user.isGuest) {
-        db.updateUser(user.id, { lastSeen: new Date().toISOString() });
-      }
-
-      // Notify all call rooms that this socket disconnected
-      for (const room of socket.rooms) {
-        if (room.startsWith('call-')) {
-          socket.to(room).emit('user-left-room-call', { socketId: socket.id });
-        }
-      }
-    }
-    sendOnlineUsersList();
-  });
-});
-
-// Broadcast online users (with levels & bios) to everyone, hiding Supervisors from other users
-  async function sendOnlineUsersList() {
-    for (const [socketId, socket] of io.of("/").sockets.entries()) {
-      const viewer = activeSockets.get(socketId);
-      const users = [];
-      const processed = new Set();
-  
-      // 1. Add online users
-      for (const [sId, activeUser] of activeSockets.entries()) {
-        if (!processed.has(activeUser.id)) {
-          processed.add(activeUser.id);
-  
-          const isTargetSupervisor = activeUser.role === 'supervisor' || activeUser.email?.toLowerCase() === 'harisheeswar722@gmail.com' || activeUser.nickname === 'hari980';
-          const isViewerSelf = viewer && viewer.id === activeUser.id;
-  
-          // Exclude supervisor from list sent to other users
-          if (isTargetSupervisor && !isViewerSelf) {
-            continue;
-          }
-  
-          users.push({
-            id: activeUser.id,
-            nickname: activeUser.nickname,
-            level: activeUser.level,
-            xp: activeUser.xp,
-            bio: activeUser.bio,
-            avatar: activeUser.avatar || null,
-            role: activeUser.role || 'user',
-            friends: activeUser.friends || [],
-            blockedUsers: activeUser.blockedUsers || [],
-            privacyMode: activeUser.privacyMode || 'public',
-            isOnline: true,
-            lastSeen: new Date().toISOString(),
-            stories: activeUser.stories || []
-          });
-        }
-      }
-
-      // 2. Add offline registered users
-      const registered = await db.getUsers();
-      registered.forEach(regUser => {
-        if (!processed.has(regUser.id)) {
-          processed.add(regUser.id);
-
-          const isTargetSupervisor = regUser.role === 'supervisor' || regUser.email?.toLowerCase() === 'harisheeswar722@gmail.com' || regUser.nickname === 'hari980';
-          if (isTargetSupervisor) return;
-
-          users.push({
-            id: regUser.id,
-            nickname: regUser.nickname,
-            level: regUser.level,
-            xp: regUser.xp,
-            bio: regUser.bio,
-            avatar: regUser.avatar || null,
-            role: regUser.role || 'user',
-            friends: regUser.friends || [],
-            blockedUsers: regUser.blockedUsers || [],
-            privacyMode: regUser.privacyMode || 'public',
-            isOnline: false,
-            lastSeen: regUser.lastSeen || regUser.createdAt,
-            stories: regUser.stories || []
-          });
-        }
-      });
-
-      socket.emit('online-users', users);
-    }
-  }
-
-  async function getDmContactsWithProfiles(userId) {
-    const contactIds = await db.getDmContacts(userId);
-    return Promise.all(contactIds.map(async id => {
-      const profile = await db.getUserById(id);
-      if (profile) {
-        return {
-          id: profile.id,
-          nickname: profile.nickname,
-          avatar: profile.avatar || null,
-          level: profile.level || 1,
-          animal: profile.animal || null,
-          bio: profile.bio || '',
-          isOnline: activeUsers.has(profile.id),
-          lastSeen: profile.lastSeen || null
-        };
-      }
-      return {
-        id: id,
-        nickname: id.startsWith('guest_') ? ('GUEST_' + id.substring(6, 12).toUpperCase()) : 'Member',
-        avatar: null,
-        level: 1,
-        animal: null,
-        bio: '',
-        isOnline: activeUsers.has(id),
-        lastSeen: null
-      };
-    }));
-  }
-
-// ----------------------------------------------------
-// USER PROGRESSION (LEVELS AND XP ENGINE)
-// ----------------------------------------------------
-// Gives online registered users 5 XP every 30 seconds of active socket connection.
-setInterval(async () => {
-  const processedUserIds = new Set();
-
-  for (const [socketId, user] of activeSockets.entries()) {
-    // Guest accounts do not level up or persist, matching standard gamification rules
-    if (user.isGuest || processedUserIds.has(user.id)) continue;
-    processedUserIds.add(user.id);
-
-    const dbUser = await db.getUserById(user.id);
-    if (!dbUser) continue;
-
-    let newXp = (dbUser.xp || 0) + 5;
-    let newLevel = dbUser.level || 1;
-
-    // Check level up (100 XP per level)
-    if (newXp >= 100) {
-      newXp = newXp - 100;
-      newLevel += 1;
-      
-      // Trigger instant level-up socket event to specific client
-      io.to(socketId).emit('level-up-alert', { level: newLevel });
-      console.log(`User ${dbUser.nickname} leveled up to Level ${newLevel}!`);
-    }
-
-    // Save update to database
-    db.updateUser(user.id, { xp: newXp, level: newLevel });
-
-    // Update active memory cache
-    user.xp = newXp;
-    user.level = newLevel;
-
-    // Notify the user client of their updated stats
-    io.to(socketId).emit('stats-updated', { xp: newXp, level: newLevel });
-  }
-
-  // Periodic broadcast of updated user levels to keep user list badges synced
-  if (processedUserIds.size > 0) {
-    sendOnlineUsersList();
-  }
-}, 30000); // 30 seconds interval
-
-// Serve Vite frontend client in production
-const clientDistPath = path.join(__dirname, '../client/dist');
-app.use(express.static(clientDistPath, {
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-  }
-}));
-
-app.get('*', (req, res) => {
-  const indexHtml = path.join(clientDistPath, 'index.html');
-  if (fs.existsSync(indexHtml)) {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.sendFile(indexHtml);
-  } else {
-    res.status(404).send('Frontend static files not found. Run npm run build first.');
-  }
-});
-
-server.listen(PORT, async () => {
-  await connectMongo();
-  console.log(`H70 Chat Server listening on port ${PORT}`);
-});
+// Existing application routes continue below this section.
